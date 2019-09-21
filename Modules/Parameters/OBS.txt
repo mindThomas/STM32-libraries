@@ -1,0 +1,2 @@
+This module is not dynamic yet.
+The list of parameters is hardcoded into this library in an inconvinient way. The currently listed parameters is taken from the Kugle-Embedded project.
