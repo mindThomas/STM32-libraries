@@ -82,8 +82,8 @@ class Timer
 		} hardware_resource_t;
 
 		static hardware_resource_t * resTIMER1;
-		static hardware_resource_t * resTIMER2;
-		static hardware_resource_t * resTIMER3;
+		//static hardware_resource_t * resTIMER2;
+		//static hardware_resource_t * resTIMER3;
 		static hardware_resource_t * resTIMER14;
 		//static hardware_resource_t * resTIMER16;
 		static hardware_resource_t * resTIMER17;

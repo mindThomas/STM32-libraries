@@ -24,17 +24,18 @@
 #include <cmath>
 
 Timer::hardware_resource_t * Timer::resTIMER1 = 0;
-Timer::hardware_resource_t * Timer::resTIMER2 = 0;
-Timer::hardware_resource_t * Timer::resTIMER3 = 0;
+//Timer::hardware_resource_t * Timer::resTIMER2 = 0; // included in Quadrature encoder
+//Timer::hardware_resource_t * Timer::resTIMER3 = 0; // included in Quadrature encoder
 Timer::hardware_resource_t * Timer::resTIMER14 = 0;
 //Timer::hardware_resource_t * Timer::resTIMER16 = 0; // used as SysTick replacement
 Timer::hardware_resource_t * Timer::resTIMER17 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" __EXPORT void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
-extern "C" __EXPORT void TIM2_IRQHandler(void);
-extern "C" __EXPORT void TIM3_IRQHandler(void);
+//extern "C" __EXPORT void TIM2_IRQHandler(void);
+//extern "C" __EXPORT void TIM3_IRQHandler(void);
 extern "C" __EXPORT void TIM14_IRQHandler(void);
+//extern "C" __EXPORT void TIM16_IRQHandler(void);
 extern "C" __EXPORT void TIM17_IRQHandler(void);
 
 #ifdef USE_FREERTOS
@@ -43,7 +44,17 @@ Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSe
 Timer::Timer(timer_t timer, uint32_t frequency)
 #endif
 {
-	if (timer == TIMER17 && !resTIMER17) {
+	if (timer == TIMER1 && !resTIMER1) {
+		resTIMER1 = new Timer::hardware_resource_t;
+		memset(resTIMER1, 0, sizeof(Timer::hardware_resource_t));
+		_hRes = resTIMER1;
+	}
+	else if (timer == TIMER14 && !resTIMER14) {
+		resTIMER14 = new Timer::hardware_resource_t;
+		memset(resTIMER14, 0, sizeof(Timer::hardware_resource_t));
+		_hRes = resTIMER14;
+	}
+	else if (timer == TIMER17 && !resTIMER17) {
 		resTIMER17 = new Timer::hardware_resource_t;
 		memset(resTIMER17, 0, sizeof(Timer::hardware_resource_t));
 		_hRes = resTIMER17;
@@ -72,9 +83,17 @@ Timer::~Timer()
 
 	// Stop Timer
 	LL_TIM_DisableIT_UPDATE(_hRes->instance);
-	LL_TIM_DeInit(TIM1);
+	LL_TIM_DeInit(_hRes->instance);
 
-	if (_hRes->timer == TIMER17) {
+	if (_hRes->timer == TIMER1) {
+		NVIC_DisableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
+		resTIMER1 = 0;
+	}
+	else if (_hRes->timer == TIMER14) {
+		NVIC_DisableIRQ(TIM14_IRQn);
+		resTIMER14 = 0;
+	}
+	else if (_hRes->timer == TIMER17) {
 		NVIC_DisableIRQ(TIM17_IRQn);
 		resTIMER17 = 0;
 	}
@@ -92,8 +111,20 @@ void Timer::ConfigureTimerPeripheral()
 
 	LL_TIM_InitTypeDef TIM_InitStruct = {0};
 
-	if (_hRes->timer == TIMER17) {
-		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_TIM17); //__HAL_RCC_TIM1_CLK_ENABLE();
+	if (_hRes->timer == TIMER1) {
+		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_TIM1); //__HAL_RCC_TIM1_CLK_ENABLE();
+		NVIC_SetPriority(TIM1_BRK_UP_TRG_COM_IRQn, TIMER_INTERRUPT_PRIORITY);
+		NVIC_EnableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
+		_hRes->instance = TIM1;
+	}
+	else if (_hRes->timer == TIMER14) {
+		LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM14); //__HAL_RCC_TIM14_CLK_ENABLE();
+		NVIC_SetPriority(TIM14_IRQn, TIMER_INTERRUPT_PRIORITY);
+		NVIC_EnableIRQ(TIM14_IRQn);
+		_hRes->instance = TIM14;
+	}
+	else if (_hRes->timer == TIMER17) {
+		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_TIM17); //__HAL_RCC_TIM17_CLK_ENABLE();
 		NVIC_SetPriority(TIM17_IRQn, TIMER_INTERRUPT_PRIORITY);
 		NVIC_EnableIRQ(TIM17_IRQn);
 		_hRes->instance = TIM17;
@@ -269,27 +300,27 @@ void Timer::InterruptHandler(Timer::hardware_resource_t * timer)
 	/* TIM Update event */
 	if(LL_TIM_IsActiveFlag_UPDATE(timer->instance) == 1)
 	{
-			/* Clear the update interrupt flag*/
-			LL_TIM_ClearFlag_UPDATE(timer->instance);
+		/* Clear the update interrupt flag*/
+		LL_TIM_ClearFlag_UPDATE(timer->instance);
 
-			timer->counterOffset += (timer->maxValue + 1);
+		timer->counterOffset += (timer->maxValue + 1);
 
-			timer->waitingFlag = false;
+		timer->waitingFlag = false;
 
-			if (timer->TimerCallback)
-				timer->TimerCallback();
+		if (timer->TimerCallback)
+			timer->TimerCallback();
 
-	#ifdef USE_FREERTOS
-			if (timer->callbackSemaphore) {
-				portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-				//xSemaphoreGiveFromISR( timer->callbackSemaphore, &xHigherPriorityTaskWoken );
-				xQueueSendFromISR(timer->callbackSemaphore, NULL, &xHigherPriorityTaskWoken);
-				portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-			}
+#ifdef USE_FREERTOS
+		if (timer->callbackSemaphore) {
+			portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+			//xSemaphoreGiveFromISR( timer->callbackSemaphore, &xHigherPriorityTaskWoken );
+			xQueueSendFromISR(timer->callbackSemaphore, NULL, &xHigherPriorityTaskWoken);
+			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+		}
 
-			if (timer->callbackTaskHandle)
-				xTaskResumeFromISR(timer->callbackTaskHandle);
-	#endif
+		if (timer->callbackTaskHandle)
+			xTaskResumeFromISR(timer->callbackTaskHandle);
+#endif
 	}
 }
 
@@ -300,6 +331,15 @@ void TIM1_BRK_UP_TRG_COM_IRQHandler(void)
 	else
 		TIM1->SR = ~(uint32_t)(TIM_SR_UIF | TIM_SR_CC1IF | TIM_SR_CC2IF | TIM_SR_CC3IF | TIM_SR_CC4IF | TIM_SR_COMIF | TIM_SR_TIF | TIM_SR_BIF); // clear all interrupts
 }
+
+void TIM14_IRQHandler(void)
+{
+	if (Timer::resTIMER14)
+		Timer::InterruptHandler(Timer::resTIMER14); //HAL_TIM_IRQHandler(&htim17);
+	else
+		TIM14->SR = ~(uint32_t)(TIM_SR_UIF | TIM_SR_CC1IF | TIM_SR_CC2IF | TIM_SR_CC3IF | TIM_SR_CC4IF | TIM_SR_COMIF | TIM_SR_TIF | TIM_SR_BIF); // clear all interrupts
+}
+
 
 void TIM17_IRQHandler(void)
 {

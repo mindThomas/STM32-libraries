@@ -19,7 +19,6 @@
 #ifndef DEVICES_QUADRATURE_KNOB_H
 #define DEVICES_QUADRATURE_KNOB_H
 
-#include "stm32h7xx_hal.h"
 #include "IO.h"
 
 class QuadratureKnob

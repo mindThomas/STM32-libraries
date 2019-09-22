@@ -357,13 +357,13 @@ void EXTI0_1_IRQHandler(void)
 
 void EXTI2_3_IRQHandler(void)
 {
-	if (LL_EXTI_IsActiveFlag_0_31(GPIO_PIN_1) != RESET) {
-		LL_EXTI_ClearFlag_0_31(GPIO_PIN_1);
-		IO::InterruptHandler(IO::interruptObjects[1]);
-	}
 	if (LL_EXTI_IsActiveFlag_0_31(GPIO_PIN_2) != RESET) {
 		LL_EXTI_ClearFlag_0_31(GPIO_PIN_2);
-		IO::InterruptHandler(IO::interruptObjects[2]);
+		IO::InterruptHandler(IO::interruptObjects[3]);
+	}
+	if (LL_EXTI_IsActiveFlag_0_31(GPIO_PIN_3) != RESET) {
+		LL_EXTI_ClearFlag_0_31(GPIO_PIN_3);
+		IO::InterruptHandler(IO::interruptObjects[3]);
 	}
 }
 
