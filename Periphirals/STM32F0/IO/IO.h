@@ -19,8 +19,33 @@
 #ifndef PERIPHIRALS_IO_H
 #define PERIPHIRALS_IO_H
 
-#include "stm32f0xx_hal.h"
-#include "cmsis_os.h" // for semaphore support
+#include "stm32f0xx_ll_bus.h"
+#include "stm32f0xx_ll_rcc.h"
+#include "stm32f0xx_ll_system.h"
+#include "stm32f0xx_ll_utils.h"
+#include "stm32f0xx_ll_gpio.h"
+#include "stm32f0xx_ll_exti.h"
+
+#ifdef USE_FREERTOS
+#include "cmsis_os.h"
+#endif
+
+#define GPIO_PIN_0		LL_GPIO_PIN_0
+#define GPIO_PIN_1		LL_GPIO_PIN_1
+#define GPIO_PIN_2		LL_GPIO_PIN_2
+#define GPIO_PIN_3		LL_GPIO_PIN_3
+#define GPIO_PIN_4		LL_GPIO_PIN_4
+#define GPIO_PIN_5		LL_GPIO_PIN_5
+#define GPIO_PIN_6		LL_GPIO_PIN_6
+#define GPIO_PIN_7		LL_GPIO_PIN_7
+#define GPIO_PIN_8		LL_GPIO_PIN_8
+#define GPIO_PIN_9		LL_GPIO_PIN_9
+#define GPIO_PIN_10		LL_GPIO_PIN_10
+#define GPIO_PIN_11		LL_GPIO_PIN_11
+#define GPIO_PIN_12		LL_GPIO_PIN_12
+#define GPIO_PIN_13		LL_GPIO_PIN_13
+#define GPIO_PIN_14		LL_GPIO_PIN_14
+#define GPIO_PIN_15		LL_GPIO_PIN_15
 
 class IO
 {
@@ -42,8 +67,10 @@ class IO
 		IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, pull_t pull); // configure as input
 		~IO();
 
+#ifdef USE_FREERTOS
 		void RegisterInterrupt(interrupt_trigger_t trigger, SemaphoreHandle_t semaphore);
-		void RegisterInterrupt(interrupt_trigger_t trigger, void (*InterruptCallback)(void * params), void * callbackParams);
+#endif
+		void RegisterInterrupt(interrupt_trigger_t trigger, void (*InterruptCallback)(void * params), void * callbackParams = 0);
 		void DeregisterInterrupt();
 
 		void Set(bool state);
@@ -58,11 +85,14 @@ class IO
 
 	private:
 		void ConfigurePin(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, bool isInput, bool isOpenDrain, pull_t pull);
+		uint16_t getPinIndex();
 
 	public:
 		void (*_InterruptCallback)(void * params);
 		void * _InterruptCallbackParams;
+#ifdef USE_FREERTOS
 		SemaphoreHandle_t _InterruptSemaphore;
+#endif
 
 		static IO * interruptObjects[16]; // we only have 16 interrupt lines
 
