@@ -140,7 +140,7 @@ void ADC::InitPeripheral(adc_t adc, uint32_t resolution)
 		_hRes->resolution = resolution;
 		_hRes->numberOfConfiguredChannels = 0;
 		memset(_hRes->map_channel2bufferIndex, 0xFF, sizeof(_hRes->map_channel2bufferIndex));
-		memcpy(_hRes->buffer, 0, sizeof(_hRes->buffer));
+		memset(_hRes->buffer, 0, sizeof(_hRes->buffer));
 
 		if (adc == ADC_3) {
 			// configure VREFINT channel as the first one, such that this channel is always read
