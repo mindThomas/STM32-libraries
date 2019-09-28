@@ -34,9 +34,11 @@ extern "C" __EXPORT void USART1_IRQHandler(void);
 #ifdef USE_FREERTOS
 UART::UART(port_t port, uint32_t baud, uint32_t bufferLength) : BaudRate(baud), _port(port), _bufferLength(bufferLength), _bufferWriteIdx(0), _bufferReadIdx(0),
 		_callbackTaskHandle(0), _resourceSemaphore(0),
+		_callbackChunkLength(0), _txPointer(0), _txRemainingBytes(0),
 		_transmitByteFinished(0), _RXdataAvailable(0), _RXcallback(0), _RXcallbackParameter(0)
 #else
 UART::UART(port_t port, uint32_t baud, uint32_t bufferLength) : BaudRate(baud), _port(port), _bufferLength(bufferLength), _bufferWriteIdx(0), _bufferReadIdx(0),
+		_callbackChunkLength(0), _txPointer(0), _txRemainingBytes(0),
 		_transmitByteFinished(true), _RXcallback(0), _RXcallbackParameter(0)
 #endif
 {
@@ -238,6 +240,30 @@ void UART::DeregisterCallback()
 
 void UART::TransmitBlocking(uint8_t * buffer, uint32_t bufLen)
 {
+	if (!bufLen) return;
+
+	_txPointer = buffer;
+	_txRemainingBytes = bufLen;
+
+    /* Start USART transmission : Will initiate TXE interrupt after TDR register is empty */
+    LL_USART_TransmitData8(_instance, *_txPointer++);
+    _txRemainingBytes--;
+
+	if (_txRemainingBytes > 0) {
+	    /* Enable TXE interrupt */
+	    LL_USART_EnableIT_TXE(_instance);
+	} else {
+	    /* Enable TC interrupt */
+	    LL_USART_EnableIT_TC(_instance);
+	}
+
+    while (_txRemainingBytes > 0);
+}
+
+void UART::TransmitBlockingHardInterrupt(uint8_t * buffer, uint32_t bufLen)
+{
+	if (!bufLen) return;
+
 	/* Enable the Transmit Data Register Empty interrupt (if FIFO mode is Disabled). */
 	//LL_USART_EnableIT_TXE(_instance);
 	//LL_USART_DisableIT_TC(_instance);
@@ -267,8 +293,10 @@ void UART::TransmitBlocking(uint8_t * buffer, uint32_t bufLen)
 	//LL_USART_DisableIT_TXE(_instance);
 }
 
-void UART::TransmitBlockingHard(uint8_t * buffer, uint32_t bufLen)
+void UART::TransmitBlockingHardPolling(uint8_t * buffer, uint32_t bufLen)
 {
+	if (!bufLen) return;
+
 	LL_USART_DisableIT_TXE(_instance);
 	LL_USART_DisableIT_TC(_instance);
 
@@ -299,7 +327,7 @@ void UART::Write(uint8_t byte)
 
 	xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
 #else
-	TransmitBlockingHard(&byte, 1);
+	TransmitBlocking(&byte, 1);
 #endif
 }
 
@@ -312,7 +340,7 @@ uint32_t UART::Write(uint8_t * buffer, uint32_t length)
 
 	xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
 #else
-	TransmitBlockingHard(buffer, length);
+	TransmitBlocking(buffer, length);
 #endif
 	return length;
 }
@@ -567,16 +595,30 @@ void UART::UART_Interrupt(port_t port)
 	/* UART in mode Transmitter ------------------------------------------------*/
 	if(((isrflags & USART_ISR_TXE) != RESET) && ((cr1its & USART_CR1_TXEIE) != RESET))
 	{
-		/* Disable the Transmit Data Register Empty interrupt */
-		LL_USART_DisableIT_TXE(uart->_instance);
+		if (uart->_txRemainingBytes > 0) { // interrupt based transmission
+			if (uart->_txRemainingBytes == 1) {
+			    /* Disable TXE interrupt */
+			    LL_USART_DisableIT_TXE(uart->_instance);
 
-#ifdef USE_FREERTOS
-		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-		xSemaphoreGiveFromISR( uart->_transmitByteFinished, &xHigherPriorityTaskWoken );
-		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-#else
-		uart->_transmitByteFinished = true;
-#endif
+			    /* Enable TC interrupt */
+			    LL_USART_EnableIT_TC(uart->_instance);
+			}
+
+			// Transmit the next byte from the buffer
+			LL_USART_TransmitData8(uart->_instance, *uart->_txPointer++);
+			uart->_txRemainingBytes--;
+		} else { // polling based transmission
+			/* Disable the Transmit Data Register Empty interrupt */
+			LL_USART_DisableIT_TXE(uart->_instance);
+
+	#ifdef USE_FREERTOS
+			portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+			xSemaphoreGiveFromISR( uart->_transmitByteFinished, &xHigherPriorityTaskWoken );
+			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+	#else
+			uart->_transmitByteFinished = true;
+	#endif
+		}
 		return;
 	}
 

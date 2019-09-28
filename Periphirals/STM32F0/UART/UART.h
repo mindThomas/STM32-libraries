@@ -81,7 +81,8 @@ class UART
 
 	private:
 		void TransmitBlocking(uint8_t * buffer, uint32_t bufLen);
-		void TransmitBlockingHard(uint8_t * buffer, uint32_t bufLen);
+		void TransmitBlockingHardInterrupt(uint8_t * buffer, uint32_t bufLen);
+		void TransmitBlockingHardPolling(uint8_t * buffer, uint32_t bufLen);
 
 	private:
 		port_t _port;
@@ -93,6 +94,8 @@ class UART
 		uint32_t _bufferWriteIdx;
 		uint32_t _bufferReadIdx;
 		uint32_t _callbackChunkLength;
+		uint8_t * _txPointer;
+		uint32_t _txRemainingBytes;
 	#ifdef USE_FREERTOS
 		TaskHandle_t _callbackTaskHandle;
 		SemaphoreHandle_t _resourceSemaphore;
