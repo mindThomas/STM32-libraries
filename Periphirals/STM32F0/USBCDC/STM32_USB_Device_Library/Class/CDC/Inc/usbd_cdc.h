@@ -38,6 +38,7 @@
 #ifdef USE_FREERTOS
 #include "cmsis_os.h" // for TX finished semaphore
 #endif
+#include "stdbool.h"
 
 /** @addtogroup STM32_USB_DEVICE_LIBRARY
   * @{
@@ -87,6 +88,8 @@
   
 #ifdef USE_FREERTOS
 extern SemaphoreHandle_t USB_TX_FinishedSemaphore;
+#else
+extern bool USB_TX_FinishedSemaphore;
 #endif 
 
 
@@ -151,7 +154,9 @@ extern USBD_ClassTypeDef  USBD_CDC;
   */ 
   
 void USBD_CDC_AllocateMemory(USBD_HandleTypeDef *pdev);
-void USBD_CDC_SetTXfinishedSemaphore(SemaphoreHandle_t semaphore);  
+#ifdef USE_FREERTOS
+void USBD_CDC_SetTXfinishedSemaphore(SemaphoreHandle_t semaphore);
+#endif
 
 /** @defgroup USB_CORE_Exported_Functions
   * @{

@@ -48,18 +48,22 @@ class USBCDC
 		bool Connected();
 
 	private:
-		TaskHandle_t _processingTaskHandle;
 		USB_CDC_Package_t _tmpPackageForRead;
 		uint8_t _readIndex;
+	#ifdef USE_FREERTOS
+		TaskHandle_t _processingTaskHandle;
 		SemaphoreHandle_t _TXfinishedSemaphore;
 		SemaphoreHandle_t _RXdataAvailable;
 		QueueHandle_t _TXqueue;
 		QueueHandle_t _RXqueue;
 		SemaphoreHandle_t _resourceSemaphore;
+	#endif
 		bool _connected;
 
+#ifdef USE_FREERTOS
 	private:
 		static void TransmitterThread(void * pvParameters);
+#endif
 
 	public:
 		static USBCDC * usbHandle;

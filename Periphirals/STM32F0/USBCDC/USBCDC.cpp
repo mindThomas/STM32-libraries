@@ -18,7 +18,6 @@
  
 #include "USBCDC.h"
 
-#include "cmsis_os.h" // for USB processing task
 #include "Debug.h"
 
 #include "usbd_conf.h"
@@ -34,7 +33,11 @@ PCD_HandleTypeDef USBCDC::hpcd_USB_FS;
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" __EXPORT void USB_IRQHandler(void);
 
+#ifdef USE_FREERTOS
 USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TXfinishedSemaphore(0), _RXdataAvailable(0), _TXqueue(0), _RXqueue(0), _connected(false)
+#else
+USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _connected(false)
+#endif
 {
 	if (usbHandle) {
 		ERROR("USB object already created");
@@ -114,6 +117,7 @@ USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TX
 
 USBCDC::~USBCDC()
 {
+#ifdef USE_FREERTOS
 	if (_processingTaskHandle)
 		vTaskDelete(_processingTaskHandle); // stop task
 
@@ -146,6 +150,7 @@ USBCDC::~USBCDC()
 		vQueueUnregisterQueue(_RXqueue);
 		vQueueDelete(_RXqueue);
 	}
+#endif
 
 	USBD_Stop(&USBCDC::hUsbDeviceFS);
 	usbHandle = NULL;
@@ -155,12 +160,17 @@ bool USBCDC::GetPackage(USB_CDC_Package_t * packageBuffer)
 {
 	if (!packageBuffer) return false;
 
+#ifdef USE_FREERTOS
 	if ( xQueueReceive( _RXqueue, packageBuffer, ( TickType_t ) 0 ) == pdPASS )
 		return true;
 	else
 		return false;
+#else
+	 return false; // reading not implemented without FreeRTOS yet
+#endif
 }
 
+#ifdef USE_FREERTOS
 void USBCDC::Write(uint8_t byte)
 {
 	USB_CDC_Package_t package;
@@ -219,6 +229,28 @@ uint32_t USBCDC::WriteBlocking(uint8_t * buffer, uint32_t length)
 
 	return length;
 }
+#else
+void USBCDC::Write(uint8_t byte)
+{
+	WriteBlocking(&byte, 1);
+}
+
+uint32_t USBCDC::Write(uint8_t * buffer, uint32_t length)
+{
+	return WriteBlocking(buffer, length);
+}
+
+uint32_t USBCDC::WriteBlocking(uint8_t * buffer, uint32_t length)
+{
+	if (!Connected()) return 0;
+
+	if (CDC_IsConnected()) {
+		while (CDC_Transmit_FS(buffer, length) != USBD_OK);
+	}
+
+	return length;
+}
+#endif
 
 int16_t USBCDC::Read()
 {
@@ -227,9 +259,13 @@ int16_t USBCDC::Read()
 	if (_readIndex == _tmpPackageForRead.length) { // load in new package for reading (if possible)
 		_tmpPackageForRead.length = 0;
 		_readIndex = 0;
+	#ifdef USE_FREERTOS
 		if ( xQueueReceive( _RXqueue, &_tmpPackageForRead, ( TickType_t ) 1 ) != pdPASS ) {
 			return -1; // no new package
 		}
+	#else
+		return -1; // reading not implemented without FreeRTOS yet
+	#endif
 	}
 
 	returnValue = _tmpPackageForRead.data[_readIndex];
@@ -240,22 +276,35 @@ int16_t USBCDC::Read()
 
 bool USBCDC::Available()
 {
+#ifdef USE_FREERTOS
 	if (_readIndex != _tmpPackageForRead.length || uxQueueMessagesWaiting(_RXqueue) > 0)
 		return true;
 	else
 		return false;
+#else
+	return false; // reading not implemented without FreeRTOS yet
+#endif
 }
 
 uint32_t USBCDC::WaitForNewData(uint32_t xTicksToWait) // blocking call
 {
+#ifdef USE_FREERTOS
 	return xSemaphoreTake( _RXdataAvailable, ( TickType_t ) xTicksToWait );
+#else
+	return false; // reading not implemented without FreeRTOS yet
+#endif
 }
 
 bool USBCDC::Connected()
 {
+#ifdef USE_FREERTOS
 	return _connected;
+#else
+	return CDC_IsConnected();
+#endif
 }
 
+#ifdef USE_FREERTOS
 void USBCDC::TransmitterThread(void * pvParameters)
 {
 	USB_CDC_Package_t package;
@@ -298,6 +347,7 @@ void USBCDC::TransmitterThread(void * pvParameters)
 		}
 	}
 }
+#endif
 
 void USB_IRQHandler(void)
 {
