@@ -170,12 +170,11 @@ void UART::InitPeripheral()
 		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_USART1);
 		LL_RCC_SetUSARTClockSource(LL_RCC_USART1_CLKSOURCE_PCLK1);
 
-		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-		/**UART4 GPIO Configuration
+		/**UART1 GPIO Configuration
 		PB6     ------> UART1_TX
 		PB7     ------> UART1_RX
 		*/
-
+		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
 		GPIO_InitStruct.Pin = LL_GPIO_PIN_6 | LL_GPIO_PIN_7;
 		GPIO_InitStruct.Speed = LL_GPIO_SPEED_LOW;
 		GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
@@ -195,7 +194,7 @@ void UART::DeInitPeripheral()
   if(_port == PORT_UART1)
   {
 	/* Peripheral clock disable */
-	  LL_APB1_GRP2_DisableClock(LL_APB1_GRP2_PERIPH_USART1);
+	LL_APB1_GRP2_DisableClock(LL_APB1_GRP2_PERIPH_USART1);
 
 	// ToDo: Deinit GPIO pins
 
