@@ -56,7 +56,7 @@ class PWM
 			HAL_CH2 = 0x04,
 			HAL_CH3 = 0x08,
 			HAL_CH4 = 0x0C
-		};
+		} pwm_hal_channel_t;
 
 	public:
 		PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue);

@@ -71,7 +71,7 @@ void I2C::DeInitPeripheral()
 	if (!_hRes) return;
 	if (_hRes->port == PORT_I2C1) {
 		/* Peripheral clock disable */
-		LL_APB1_GRP2_DisableClock(LL_APB1_GRP2_PERIPH_USART1);
+		LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_I2C1);
 
 		// ToDo: Deinit GPIO pins
 
@@ -216,6 +216,8 @@ void I2C::ConfigurePeripheral()
 			ERROR("Could not initialize I2C port");
 			return;
 	    }
+
+	    _hRes->configured = true;
 	}
 }
 
@@ -478,7 +480,7 @@ void I2C::I2C_Interrupt(port_t port)
 	}
 
 	/* Check TXE flag value in ISR register */
-	if (LL_I2C_IsActiveFlag_TXIS(I2C1))
+	if (LL_I2C_IsActiveFlag_TXIS(i2c->instance))
 	{
 		/* Write data in Transmit Data register.
 		TXIS flag is cleared by writing data in TXDR register */

@@ -82,11 +82,8 @@ void ADC::InitPeripheral(adc_t adc, uint32_t resolution)
 				resADC1 = new ADC::hardware_resource_t;
 				memset(resADC1, 0, sizeof(ADC::hardware_resource_t));
 				configureResource = true;
-				_hRes = resADC1;
 			}
-			else {
-				_hRes = resADC1;
-			}
+			_hRes = resADC1;
 			break;
 		default:
 			ERROR("Undefined ADC");

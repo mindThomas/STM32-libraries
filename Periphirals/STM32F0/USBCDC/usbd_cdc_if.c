@@ -263,14 +263,13 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-#ifdef USE_FREERTOS
-  portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-#endif
   uint32_t remainingLength = *Len;
   uint16_t copyLength;
   uint8_t * copyPtr = Buf;
 
 #ifdef USE_FREERTOS
+  portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+
   while (remainingLength > 0) {
 	  copyLength = remainingLength;
 	  if (copyLength > USB_PACKAGE_MAX_SIZE) copyLength = USB_PACKAGE_MAX_SIZE;
@@ -285,6 +284,15 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 
   if (ReceiveSemaphore)
 	  xSemaphoreGiveFromISR( ReceiveSemaphore, &xHigherPriorityTaskWoken );
+#else
+  while (remainingLength > 0) {
+	  copyLength = remainingLength;
+	  if (copyLength > USB_PACKAGE_MAX_SIZE) copyLength = USB_PACKAGE_MAX_SIZE;
+	  memcpy(tmpPackage.data, copyPtr, copyLength);
+	  tmpPackage.length = copyLength;
+
+	  // ToDo: Send tmpPackage to registered callback function
+  }
 #endif
 
   USBD_CDC_SetRxBuffer(hUsbDeviceFS, &Buf[0]);
