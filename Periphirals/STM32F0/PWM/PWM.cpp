@@ -53,6 +53,9 @@ PWM::~PWM()
 
 		switch (tmpTimer)
 		{
+			case TIMER1:
+				resTIMER1 = 0;
+				break;
 			case TIMER3:
 				resTIMER3 = 0;
 				break;
@@ -63,10 +66,13 @@ PWM::~PWM()
 
 		LL_TIM_DeInit(tmpInstance);
 
-		if (tmpTimer == TIMER3) {
+		if (tmpTimer == TIMER1) {
+			LL_APB1_GRP2_DisableClock(LL_APB1_GRP2_PERIPH_TIM1);  //__HAL_RCC_TIM1_CLK_DISABLE();
+		}
+		else if (tmpTimer == TIMER3) {
 			LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_TIM3);  //__HAL_RCC_TIM3_CLK_DISABLE();
-			_hRes->instance = TIM3;
-		} else {
+		}
+		else {
 			// TODO: INSERT OTHER TIMERS HERE
 		}
 	}
@@ -80,6 +86,19 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
 
 	switch (timer)
 	{
+		case TIMER1:
+			if (!resTIMER1) {
+				if (frequency > 0 && maxValue > 0) { // only configure if frequency and maxValue is set
+					resTIMER1 = new PWM::hardware_resource_t;
+					memset(resTIMER1, 0, sizeof(PWM::hardware_resource_t));
+					configureResource = true;
+					_hRes = resTIMER1;
+				}
+			}
+			else {
+				_hRes = resTIMER1;
+			}
+			break;
 		case TIMER3:
 			if (!resTIMER3) {
 				if (frequency > 0 && maxValue > 0) { // only configure if frequency and maxValue is set
@@ -151,11 +170,17 @@ void PWM::ConfigureTimerPeripheral()
 	if (!_hRes) return;
 
 	LL_TIM_InitTypeDef TIM_InitStruct = {0};
+	LL_TIM_BDTR_InitTypeDef TIM_BDTRInitStruct = {0};
 
-	if (_hRes->timer == TIMER3) {
+	if (_hRes->timer == TIMER1) {
+		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_TIM1);  //__HAL_RCC_TIM1_CLK_ENABLE();
+		_hRes->instance = TIM1;
+	}
+	else if (_hRes->timer == TIMER3) {
 		LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM3);  //__HAL_RCC_TIM3_CLK_ENABLE();
 		_hRes->instance = TIM3;
-	} else {
+	}
+	else {
 		// TODO: INSERT OTHER TIMERS HERE
 	}
 
@@ -188,7 +213,23 @@ void PWM::ConfigureTimerPeripheral()
 	}
 
     // Enable ARR register preload
-	LL_TIM_EnableARRPreload(_hRes->instance);
+	LL_TIM_DisableARRPreload(_hRes->instance);
+
+	LL_TIM_SetClockSource(_hRes->instance, LL_TIM_CLOCKSOURCE_INTERNAL);
+	LL_TIM_SetTriggerOutput(_hRes->instance, LL_TIM_TRGO_RESET);
+	LL_TIM_DisableMasterSlaveMode(_hRes->instance);
+
+	TIM_BDTRInitStruct.OSSRState = LL_TIM_OSSR_DISABLE;
+	TIM_BDTRInitStruct.OSSIState = LL_TIM_OSSI_DISABLE;
+	TIM_BDTRInitStruct.LockLevel = LL_TIM_LOCKLEVEL_OFF;
+	TIM_BDTRInitStruct.DeadTime = 0;
+	TIM_BDTRInitStruct.BreakState = LL_TIM_BREAK_DISABLE;
+	TIM_BDTRInitStruct.BreakPolarity = LL_TIM_BREAK_POLARITY_HIGH;
+	TIM_BDTRInitStruct.AutomaticOutput = LL_TIM_AUTOMATICOUTPUT_DISABLE;
+	LL_TIM_BDTR_Init(_hRes->instance, &TIM_BDTRInitStruct);
+
+	// Enable all available PWM (output compare) outputs
+	LL_TIM_EnableAllOutputs(_hRes->instance);
 
 	// Enable timer
 	LL_TIM_EnableCounter(_hRes->instance);
@@ -204,13 +245,34 @@ void PWM::ConfigureTimerGPIO()
 	GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
 	GPIO_InitStruct.Speed = LL_GPIO_SPEED_LOW;
 
-	if (_hRes->timer == TIMER3)
+	if (_hRes->timer == TIMER1)
+	{
+		GPIO_InitStruct.Alternate = LL_GPIO_AF_2;
+		/**TIM1 GPIO Configuration
+		PA8     ------> TIM1_CH1
+		PA9     ------> TIM1_CH2
+		PA10    ------> TIM1_CH3
+		*/
+		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+		if (_channel == CH1) {
+			GPIO_InitStruct.Pin = LL_GPIO_PIN_8;
+			LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+		} else if (_channel == CH2) {
+			GPIO_InitStruct.Pin = LL_GPIO_PIN_9;
+			LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+		} else if (_channel == CH3) {
+			GPIO_InitStruct.Pin = LL_GPIO_PIN_10;
+			LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+		} else
+			return;
+	}
+	else if (_hRes->timer == TIMER3)
 	{
 		GPIO_InitStruct.Alternate = LL_GPIO_AF_1;
 		/**TIM1 GPIO Configuration
-		PA6     ------> TIM1_CH1
-		PA7     ------> TIM1_CH2
-		PB0     ------> TIM1_CH3
+		PA6     ------> TIM3_CH1
+		PA7     ------> TIM3_CH2
+		PB0     ------> TIM3_CH3
 		*/
 		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
 		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
@@ -258,6 +320,9 @@ void PWM::ConfigureTimerChannel()
 	} else
 		return;
 
+	// Enable CCR1 register preload
+	LL_TIM_OC_EnablePreload(_hRes->instance, _channelLL);
+
 	// Configure channel
 	if (LL_TIM_OC_Init(_hRes->instance, _channelLL, &TIM_OC_InitStruct) != SUCCESS)
 	{
@@ -266,14 +331,13 @@ void PWM::ConfigureTimerChannel()
 		return;
 	}
 
-	// Enable CCR1 register preload
-	LL_TIM_OC_EnablePreload(_hRes->instance, _channelLL);
+    LL_TIM_OC_DisableFast(_hRes->instance, _channelLL);
 
 	// Start channel
 	LL_TIM_CC_EnableChannel(_hRes->instance, _channelLL);
 
 	// Force update generation
-	LL_TIM_GenerateEvent_UPDATE(_hRes->instance);
+	//LL_TIM_GenerateEvent_UPDATE(_hRes->instance);
 
 	_hRes->configuredChannels |= _channel;
 }

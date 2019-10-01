@@ -40,9 +40,7 @@ class Timer
 	public:
 		typedef enum timer_t {
 			TIMER_UNDEFINED = 0,
-			TIMER1,
 			TIMER2,
-			TIMER3,
 			TIMER14,
 			TIMER16,
 			TIMER17

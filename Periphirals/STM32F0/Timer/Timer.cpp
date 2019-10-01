@@ -23,15 +23,15 @@
 #include <string.h> // for memset
 #include <cmath>
 
-Timer::hardware_resource_t * Timer::resTIMER1 = 0;
+//Timer::hardware_resource_t * Timer::resTIMER1 = 0; // used for PWM
 //Timer::hardware_resource_t * Timer::resTIMER2 = 0; // included in Quadrature encoder
-//Timer::hardware_resource_t * Timer::resTIMER3 = 0; // included in Quadrature encoder
+//Timer::hardware_resource_t * Timer::resTIMER3 = 0; // used for PWM
 Timer::hardware_resource_t * Timer::resTIMER14 = 0;
 //Timer::hardware_resource_t * Timer::resTIMER16 = 0; // used as SysTick replacement
 Timer::hardware_resource_t * Timer::resTIMER17 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
+//extern "C" __EXPORT void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
 //extern "C" __EXPORT void TIM2_IRQHandler(void);
 //extern "C" __EXPORT void TIM3_IRQHandler(void);
 extern "C" __EXPORT void TIM14_IRQHandler(void);
@@ -44,12 +44,7 @@ Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSe
 Timer::Timer(timer_t timer, uint32_t frequency)
 #endif
 {
-	if (timer == TIMER1 && !resTIMER1) {
-		resTIMER1 = new Timer::hardware_resource_t;
-		memset(resTIMER1, 0, sizeof(Timer::hardware_resource_t));
-		_hRes = resTIMER1;
-	}
-	else if (timer == TIMER14 && !resTIMER14) {
+	if (timer == TIMER14 && !resTIMER14) {
 		resTIMER14 = new Timer::hardware_resource_t;
 		memset(resTIMER14, 0, sizeof(Timer::hardware_resource_t));
 		_hRes = resTIMER14;
@@ -85,11 +80,7 @@ Timer::~Timer()
 	LL_TIM_DisableIT_UPDATE(_hRes->instance);
 	LL_TIM_DeInit(_hRes->instance);
 
-	if (_hRes->timer == TIMER1) {
-		NVIC_DisableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
-		resTIMER1 = 0;
-	}
-	else if (_hRes->timer == TIMER14) {
+	if (_hRes->timer == TIMER14) {
 		NVIC_DisableIRQ(TIM14_IRQn);
 		resTIMER14 = 0;
 	}
@@ -111,13 +102,7 @@ void Timer::ConfigureTimerPeripheral()
 
 	LL_TIM_InitTypeDef TIM_InitStruct = {0};
 
-	if (_hRes->timer == TIMER1) {
-		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_TIM1); //__HAL_RCC_TIM1_CLK_ENABLE();
-		NVIC_SetPriority(TIM1_BRK_UP_TRG_COM_IRQn, TIMER_INTERRUPT_PRIORITY);
-		NVIC_EnableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
-		_hRes->instance = TIM1;
-	}
-	else if (_hRes->timer == TIMER14) {
+	if (_hRes->timer == TIMER14) {
 		LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM14); //__HAL_RCC_TIM14_CLK_ENABLE();
 		NVIC_SetPriority(TIM14_IRQn, TIMER_INTERRUPT_PRIORITY);
 		NVIC_EnableIRQ(TIM14_IRQn);
@@ -322,14 +307,6 @@ void Timer::InterruptHandler(Timer::hardware_resource_t * timer)
 			xTaskResumeFromISR(timer->callbackTaskHandle);
 #endif
 	}
-}
-
-void TIM1_BRK_UP_TRG_COM_IRQHandler(void)
-{
-	if (Timer::resTIMER1)
-		Timer::InterruptHandler(Timer::resTIMER1); //HAL_TIM_IRQHandler(&htim1);
-	else
-		TIM1->SR = ~(uint32_t)(TIM_SR_UIF | TIM_SR_CC1IF | TIM_SR_CC2IF | TIM_SR_CC3IF | TIM_SR_CC4IF | TIM_SR_COMIF | TIM_SR_TIF | TIM_SR_BIF); // clear all interrupts
 }
 
 void TIM14_IRQHandler(void)
