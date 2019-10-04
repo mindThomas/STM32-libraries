@@ -29,6 +29,9 @@
 #include "stm32f0xx_ll_adc.h"
 #include "stm32f0xx_ll_dma.h"
 
+#include "Timer.h"
+#include <CircularBuffer.hpp>
+
 /* Macro to get variable aligned on 32-bytes,needed for cache maintenance purpose */
 #if defined   (__GNUC__)        /* GNU Compiler */
   #define ALIGN_32BYTES(buf)  buf __attribute__ ((aligned (32)))
@@ -79,23 +82,15 @@ class ADC
 			ADC_CHANNEL_13,
 			ADC_CHANNEL_14,
 			ADC_CHANNEL_15,
-			ADC_CHANNEL_16,
-			ADC_CHANNEL_17,
 			ADC_CHANNEL_TEMPSENSOR = 16,
 			ADC_CHANNEL_VREFINT = 17,
 			ADC_CHANNEL_VBAT = 18
 		} adc_channel_t;
 
 	public:
-		ADC(adc_t adc, adc_channel_t channel);
-		ADC(adc_t adc, adc_channel_t channel, uint32_t resolution);
+		ADC(adc_t adc, adc_channel_t channel, uint32_t circularBufferSize = 0, Timer * triggerTimer = 0);
+		ADC(adc_t adc, adc_channel_t channel, uint32_t resolution, uint32_t circularBufferSize, Timer * triggerTimer);
 		~ADC();
-
-		void InitPeripheral(adc_t adc, uint32_t resolution);
-		void ConfigureADCPeripheral();
-		void ConfigureADCGPIO();
-		void ConfigureADCChannels();
-		void ConfigureDMA(void);
 
 		float Read();
 		int32_t ReadRaw();
@@ -103,7 +98,19 @@ class ADC
 
 		float ReadVoltage();
 
+	private:
+		void InitPeripheral(adc_t adc, uint32_t resolution, Timer * triggerTimer);
+		void ConfigureADCPeripheral();
+		void ConfigureADCGPIO();
+		void ConfigureADCChannels();
+		void ConfigureDMA(void);
+
 	public:
+		typedef struct measurement_t {
+			uint32_t timestamp;
+			uint16_t sample;
+		} measurement_t;
+
 		typedef struct hardware_resource_t {
 			adc_t adc;
 			uint32_t resolution;
@@ -114,6 +121,8 @@ class ADC
 			ALIGN_32BYTES (uint16_t buffer[16]); // 32-bytes Alignement is needed for cache maintenance purpose
 			uint8_t bufferSize;
 			uint8_t map_channel2bufferIndex[20];
+			CircularBuffer<measurement_t> * map_channel2bufferPtr[20];
+			bool circularBufferEnabled;
 		} hardware_resource_t;
 
 		static hardware_resource_t * resADC1;
@@ -126,6 +135,7 @@ class ADC
 	private:
 		hardware_resource_t * _hRes;
 		adc_channel_t _channel;
+		CircularBuffer<measurement_t> _buffer;
 };
 	
 	

@@ -17,6 +17,7 @@
  */
  
 #include "ADC.h"
+#include "stm32f0xx_hal_timebase_tim.h"
 
 #include "Debug.h"
 #include <string.h> // for memset
@@ -28,19 +29,20 @@ float ADC::ADC_REF_CORR = 1.0f;
 extern "C" __EXPORT void ADC1_COMP_IRQHandler(void);
 extern "C" __EXPORT void DMA1_Channel1_IRQHandler(void);
 
-ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t resolution) : _channel(channel)
+ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t resolution, uint32_t circularBufferSize, Timer * triggerTimer) : _channel(channel), _buffer(circularBufferSize)
 {
-	InitPeripheral(adc, resolution);
+	InitPeripheral(adc, resolution, triggerTimer);
 }
-ADC::ADC(adc_t adc, adc_channel_t channel) : _channel(channel)
+ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t circularBufferSize, Timer * triggerTimer) : _channel(channel), _buffer(circularBufferSize)
 {
-	InitPeripheral(adc, ADC_DEFAULT_RESOLUTION);
+	InitPeripheral(adc, ADC_DEFAULT_RESOLUTION, triggerTimer);
 }
 
 ADC::~ADC()
 {
 	if (!_hRes) return;
 	_hRes->map_channel2bufferIndex[_channel] = 0xFF; // mark as unconfigured
+	_hRes->map_channel2bufferPtr[_channel] = 0; // mark as unconfigured
 	_hRes->numberOfConfiguredChannels--;
 
 	// Stop ADC
@@ -69,7 +71,7 @@ ADC::~ADC()
 	}
 }
 
-void ADC::InitPeripheral(adc_t adc, uint32_t resolution)
+void ADC::InitPeripheral(adc_t adc, uint32_t resolution, Timer * triggerTimer)
 {
 	bool configureResource = false;
 
@@ -94,13 +96,16 @@ void ADC::InitPeripheral(adc_t adc, uint32_t resolution)
 		_hRes->adc = adc;
 		_hRes->resolution = resolution;
 		_hRes->numberOfConfiguredChannels = 0;
+		_hRes->circularBufferEnabled = false;
 		memset(_hRes->map_channel2bufferIndex, 0xFF, sizeof(_hRes->map_channel2bufferIndex));
+		memset(_hRes->map_channel2bufferPtr, 0, sizeof(_hRes->map_channel2bufferPtr));
 		memset(_hRes->buffer, 0, sizeof(_hRes->buffer));
 
 		if (adc == ADC_1) {
 			// configure VREFINT channel as the first one, such that this channel is always read
 			_hRes->map_channel2bufferIndex[ADC_CHANNEL_VREFINT] = 0;
-			_hRes->numberOfConfiguredChannels = 1;
+			_hRes->map_channel2bufferIndex[ADC_CHANNEL_TEMPSENSOR] = 1;
+			_hRes->numberOfConfiguredChannels = 2;
 		}
 	}
 
@@ -111,13 +116,27 @@ void ADC::InitPeripheral(adc_t adc, uint32_t resolution)
 		return;
 	}
 
-	// ToDo: Recompute map_channel2bufferIndex
-
 	if (_hRes->resolution != resolution) {
 		_hRes = 0;
 		ERROR("ADC already in used with different resolution");
 		return;
 	}
+
+    _hRes->numberOfConfiguredChannels++;
+	_hRes->map_channel2bufferIndex[_channel] = _hRes->numberOfConfiguredChannels; // set to maximum before reordering
+	_hRes->map_channel2bufferPtr[_channel] = &_buffer;
+
+	// Reorder map_channel2bufferIndex
+	uint8_t bufferIndex = 1;
+	for (uint8_t ch = ADC_CHANNEL_0; ch <= ADC_CHANNEL_15; ch++) {
+		if (_hRes->map_channel2bufferIndex[ch] != 0xFF) {
+			_hRes->map_channel2bufferIndex[ch] = bufferIndex++;
+		}
+	}
+	_hRes->map_channel2bufferIndex[ADC_CHANNEL_TEMPSENSOR] = _hRes->numberOfConfiguredChannels - 1;
+
+	if (_buffer.FreeSpace())
+		_hRes->circularBufferEnabled = true;
 
 	ConfigureADCGPIO();
 	ConfigureADCPeripheral();
@@ -128,8 +147,6 @@ void ADC::ConfigureADCPeripheral()
 {
 	if (!_hRes) return;
 
-	//ConfigureDMA();
-
 	/* ADC Periph interface clock configuration */
 	if (_hRes->adc == ADC_1) {
 		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_ADC1);
@@ -138,17 +155,24 @@ void ADC::ConfigureADCPeripheral()
 		NVIC_EnableIRQ(ADC1_IRQn);
 	}
 
+	// Stop ADC (if already running) to be able to configure
+	if (LL_ADC_REG_IsConversionOngoing(_hRes->instance) != RESET) {
+		LL_ADC_REG_StopConversion(_hRes->instance);
+		LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
+		LL_ADC_Disable(_hRes->instance);
+
+		LL_ADC_DeInit(_hRes->instance);
+		LL_ADC_CommonDeInit(__LL_ADC_COMMON_INSTANCE(_hRes->instance));
+		LL_DMA_DeInit(DMA1, LL_DMA_CHANNEL_1);
+		while (LL_ADC_IsDisableOngoing(_hRes->instance));
+	}
+
 	// Can only configure ADC if it is not already running
 	if(__LL_ADC_IS_ENABLED_ALL_COMMON_INSTANCE() == 0)
 	{
 		/* Enable internal channels */
 		LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE(_hRes->instance), (LL_ADC_PATH_INTERNAL_VREFINT | LL_ADC_PATH_INTERNAL_TEMPSENSOR));
 
-		/*wait_loop_index = ((LL_ADC_DELAY_TEMPSENSOR_STAB_US * (SystemCoreClock / (100000 * 2))) / 10);
-		while(wait_loop_index != 0)
-		{
-		wait_loop_index--;
-		}*/
 		HAL_Delay(1);
 	}
 
@@ -160,7 +184,7 @@ void ADC::ConfigureADCPeripheral()
 	if (LL_ADC_IsEnabled(_hRes->instance) == 0)
 	{
 		/* Set ADC clock (conversion clock) */
-		LL_ADC_SetClock(_hRes->instance, LL_ADC_CLOCK_SYNC_PCLK_DIV2);
+		LL_ADC_SetClock(_hRes->instance, LL_ADC_CLOCK_SYNC_PCLK_DIV4);
 
 		/* Set ADC data resolution */
 		if (_hRes->resolution == LL_ADC_RESOLUTION_8B) {
@@ -208,7 +232,25 @@ void ADC::ConfigureADCPeripheral()
 		//LL_ADC_REG_SetSequencerDiscont(_hRes->instance, LL_ADC_REG_SEQ_DISCONT_DISABLE);
 
 		/* Configure ADC channels */
-		LL_ADC_REG_SetSequencerChannels(_hRes->instance, LL_ADC_CHANNEL_2 | LL_ADC_CHANNEL_VREFINT | LL_ADC_CHANNEL_TEMPSENSOR);
+		uint32_t sequencerChannels = LL_ADC_CHANNEL_VREFINT | LL_ADC_CHANNEL_TEMPSENSOR;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_0] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_0;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_1] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_1;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_2] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_2;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_3] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_3;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_4] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_4;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_5] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_5;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_6] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_6;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_7] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_7;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_8] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_8;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_9] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_9;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_10] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_10;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_11] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_11;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_12] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_12;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_13] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_13;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_14] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_14;
+		if (_hRes->map_channel2bufferIndex[ADC_CHANNEL_15] != 0xFF) sequencerChannels |= LL_ADC_CHANNEL_15;
+
+		LL_ADC_REG_SetSequencerChannels(_hRes->instance, sequencerChannels);
 		// ADC Channel ADC_CHANNEL_TEMPSENSOR is on ADC channel 16
 		// ADC Channel ADC_CHANNEL_VREFINT is on ADC channel 17
 	}
@@ -220,11 +262,6 @@ void ADC::ConfigureADCPeripheral()
 
 	/* Enable interruption ADC group regular overrun */
 	LL_ADC_EnableIT_OVR(_hRes->instance);
-
-	_hRes->map_channel2bufferIndex[ADC_CHANNEL_VREFINT] = 0;
-	_hRes->map_channel2bufferIndex[ADC_CHANNEL_2] = 1;
-	_hRes->map_channel2bufferIndex[ADC_CHANNEL_TEMPSENSOR] = 2;
-	_hRes->numberOfConfiguredChannels = 3;
 
 	// Calibrate and Enable ADC
 	__IO uint32_t backup_setting_adc_dma_transfer = 0;
@@ -356,6 +393,11 @@ void ADC::ConfigureADCGPIO()
 			GPIO_InitStruct.Pin = LL_GPIO_PIN_2;
 			LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 		}
+		else if (_channel == ADC_CHANNEL_9) {
+			LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+			GPIO_InitStruct.Pin = LL_GPIO_PIN_1;
+			LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+		}
 		else {
 			_hRes = 0;
 			ERROR("Invalid ADC channel");
@@ -363,70 +405,6 @@ void ADC::ConfigureADCGPIO()
 		}
 	}
 }
-
-#if 0
-void ADC::ConfigureADCChannels()
-{
-	if (!_hRes) return;
-
-	ADC_ChannelConfTypeDef sConfig = {0};
-
-	/*sConfig.Channel = _channel;
-	sConfig.Rank = ADC_REGULAR_RANK_1; // Rank of sampled channel number ADCx_CHANNEL
-	sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5; // Sampling time (number of clock cycles unit)
-	sConfig.SingleDiff = ADC_SINGLE_ENDED;
-	sConfig.OffsetNumber = ADC_OFFSET_NONE;
-	sConfig.Offset = 0;
-	if (HAL_ADC_ConfigChannel(&_hRes->handle, &sConfig) != HAL_OK)
-	{
-		_hRes = 0;
-		ERROR("Could not configure ADC channel");
-		return;
-	}
-
-	// Start continuous ADC conversion
-	if (HAL_ADC_Start(&_hRes->handle) != HAL_OK)
-	{
-		_hRes = 0;
-		ERROR("Could not start ADC");
-		return;
-	}*/
-
-	/* Loop through configured channels and configure rank according to map */
-	for (int channel = 0; channel < sizeof(_hRes->map_channel2bufferIndex); channel++) {
-		if (_hRes->map_channel2bufferIndex[channel] != 0xFF) {
-			sConfig.Channel      = channel;                /* Sampled channel number */
-			sConfig.Rank         = _hRes->map_channel2bufferIndex[channel] + 1; // ADC_REGULAR_RANK_1;          /* Rank of sampled channel number ADCx_CHANNEL */
-			sConfig.SamplingTime = ADC_SAMPLETIME_8CYCLES_5;   /* Sampling time (number of clock cycles unit) */
-			if (channel == ADC_CHANNEL_VBAT_DIV4 || channel == ADC_CHANNEL_TEMPSENSOR || channel == ADC_CHANNEL_VREFINT)
-				sConfig.SamplingTime = ADC_SAMPLETIME_387CYCLES_5;   /* Sampling time (number of clock cycles unit) */
-			sConfig.SingleDiff   = ADC_SINGLE_ENDED;            /* Single-ended input channel */
-			sConfig.OffsetNumber = ADC_OFFSET_NONE;             /* No offset subtraction */
-			sConfig.Offset = 0;                                 /* Parameter discarded because offset correction is disabled */
-			if (HAL_ADC_ConfigChannel(&_hRes->handle, &sConfig) != HAL_OK)
-			{
-				_hRes = 0;
-				ERROR("Could not configure ADC channel");
-				return;
-			}
-		}
-	}
-
-	  _hRes->bufferSize = 2*_hRes->numberOfConfiguredChannels; // 16-bit pr. channel = 2 bytes pr. channel
-
-	  /* ### - 4 - Start conversion in DMA mode ################################# */
-	  //if (StartDMA(&_hRes->handle,
-	  if (HAL_ADC_Start_DMA(&_hRes->handle,
-							(uint32_t *)_hRes->buffer,
-							_hRes->numberOfConfiguredChannels  // just sample the number of channels into the buffer
-						   ) != HAL_OK)
-	  {
-			_hRes = 0;
-			ERROR("Could not start ADC");
-			return;
-	  }
-}
-#endif
 
 void ADC::ConfigureDMA(void)
 {
@@ -528,7 +506,8 @@ void ADC1_IRQHandler(void)
 
 void DMA1_Channel1_IRQHandler(void)
 {
-	if (!ADC::resADC1) return;
+	ADC::hardware_resource_t * res = ADC::resADC1;
+	if (!res) return;
 
 	/* Check whether DMA transfer complete caused the DMA interruption */
 	if(LL_DMA_IsActiveFlag_TC1(DMA1) == 1)
@@ -537,17 +516,17 @@ void DMA1_Channel1_IRQHandler(void)
 		/* (global interrupt flag: half transfer and transfer complete flags) */
 		LL_DMA_ClearFlag_GI1(DMA1);
 
-#if 0
-		/* For this example purpose, check that DMA transfer status is matching     */
-		/* ADC group regular sequence status:                                       */
-		if (ubAdcGrpRegularSequenceConvStatus != 1)
+		if (res->circularBufferEnabled)
 		{
-			AdcDmaTransferError_Callback();
+			ADC::measurement_t meas;
+			meas.timestamp = HAL_GetHighResTick();
+			for (uint8_t ch = ADC::ADC_CHANNEL_0; ch <= ADC::ADC_CHANNEL_15; ch++) {
+				if (res->map_channel2bufferPtr[ch]) {
+					meas.sample = res->buffer[res->map_channel2bufferIndex[ch]];
+					res->map_channel2bufferPtr[ch]->PushFromInterrupt(meas);
+				}
+			}
 		}
-
-		/* Reset status variable of ADC group regular sequence */
-		ubAdcGrpRegularSequenceConvStatus = 0;
-#endif
 	}
 
 	/* Check whether DMA transfer error caused the DMA interruption */
