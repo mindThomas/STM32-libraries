@@ -28,8 +28,8 @@
 #include "stm32f0xx_ll_exti.h"
 #include "stm32f0xx_ll_adc.h"
 #include "stm32f0xx_ll_dma.h"
+#include "stm32f0xx_ll_tim.h"
 
-#include "Timer.h"
 #include <CircularBuffer.hpp>
 
 /* Macro to get variable aligned on 32-bytes,needed for cache maintenance purpose */
@@ -87,9 +87,14 @@ class ADC
 			ADC_CHANNEL_VBAT = 18
 		} adc_channel_t;
 
+		typedef struct measurement_t {
+			uint32_t timestamp{0};
+			uint16_t mVolt{5000};
+		} measurement_t;
+
 	public:
-		ADC(adc_t adc, adc_channel_t channel, uint32_t circularBufferSize = 0, Timer * triggerTimer = 0);
-		ADC(adc_t adc, adc_channel_t channel, uint32_t resolution, uint32_t circularBufferSize, Timer * triggerTimer);
+		ADC(adc_t adc, adc_channel_t channel, uint32_t circularBufferSize = 0, TIM_TypeDef * triggerTimer = 0);
+		ADC(adc_t adc, adc_channel_t channel, uint32_t resolution, uint32_t circularBufferSize, TIM_TypeDef * triggerTimer);
 		~ADC();
 
 		float Read();
@@ -98,19 +103,20 @@ class ADC
 
 		float ReadVoltage();
 
+		// Measurement handling (circular buffer based)
+		bool MeasurementAvailable();
+		measurement_t GetMeasurement();
+		measurement_t GetLatestMeasurement();
+		uint32_t GetLatestSampleTimestamp();
+
 	private:
-		void InitPeripheral(adc_t adc, uint32_t resolution, Timer * triggerTimer);
+		void InitPeripheral(adc_t adc, uint32_t resolution, TIM_TypeDef * triggerTimer);
 		void ConfigureADCPeripheral();
 		void ConfigureADCGPIO();
 		void ConfigureADCChannels();
 		void ConfigureDMA(void);
 
 	public:
-		typedef struct measurement_t {
-			uint32_t timestamp;
-			uint16_t sample;
-		} measurement_t;
-
 		typedef struct hardware_resource_t {
 			adc_t adc;
 			uint32_t resolution;
@@ -119,6 +125,9 @@ class ADC
 			ADC_TypeDef * instance;
 			DMA_TypeDef * DMA;
 			ALIGN_32BYTES (uint16_t buffer[16]); // 32-bytes Alignement is needed for cache maintenance purpose
+			uint32_t lastSampleTimestamp;
+			TIM_TypeDef * triggerTimer;
+			// Circular buffer variables
 			uint8_t bufferSize;
 			uint8_t map_channel2bufferIndex[20];
 			CircularBuffer<measurement_t> * map_channel2bufferPtr[20];

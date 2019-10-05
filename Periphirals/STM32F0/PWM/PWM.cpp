@@ -195,6 +195,8 @@ void PWM::ConfigureTimerPeripheral()
 	LL_RCC_ClocksTypeDef clocks;
 	LL_RCC_GetSystemClocksFreq(&clocks);
 	uint32_t TimerClock = clocks.PCLK1_Frequency; //HAL_RCC_GetPCLK1Freq();
+	if (LL_RCC_GetAPB1Prescaler() != LL_RCC_APB1_DIV_1)
+		TimerClock *= 2;
 	// Added prescaler computation as float such that rounding can happen
 	float prescaler = ((float)TimerClock / ((TIM_InitStruct.Autoreload+1) * _hRes->frequency)) - 1;
 	TIM_InitStruct.Prescaler = roundf(prescaler);

@@ -307,6 +307,8 @@ void SPI::ConfigurePeripheral()
 		LL_RCC_ClocksTypeDef clocks;
 		LL_RCC_GetSystemClocksFreq(&clocks);
 		uint32_t SPI_Clock = clocks.PCLK1_Frequency; //HAL_RCC_GetPCLK1Freq();
+		if (LL_RCC_GetAPB1Prescaler() != LL_RCC_APB1_DIV_1)
+			SPI_Clock *= 2;
 		// Find the prescaler which matches the desired frequency best (rounding down)
 		float prescaler = (float)SPI_Clock / _hRes->frequency;
 		if (prescaler <= 2)

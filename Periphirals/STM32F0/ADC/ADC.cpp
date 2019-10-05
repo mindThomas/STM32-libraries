@@ -29,13 +29,13 @@ float ADC::ADC_REF_CORR = 1.0f;
 extern "C" __EXPORT void ADC1_COMP_IRQHandler(void);
 extern "C" __EXPORT void DMA1_Channel1_IRQHandler(void);
 
-ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t resolution, uint32_t circularBufferSize, Timer * triggerTimer) : _channel(channel), _buffer(circularBufferSize)
-{
-	InitPeripheral(adc, resolution, triggerTimer);
-}
-ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t circularBufferSize, Timer * triggerTimer) : _channel(channel), _buffer(circularBufferSize)
+ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t circularBufferSize, TIM_TypeDef * triggerTimer) : _channel(channel), _buffer(circularBufferSize)
 {
 	InitPeripheral(adc, ADC_DEFAULT_RESOLUTION, triggerTimer);
+}
+ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t resolution, uint32_t circularBufferSize, TIM_TypeDef * triggerTimer) : _channel(channel), _buffer(circularBufferSize)
+{
+	InitPeripheral(adc, resolution, triggerTimer);
 }
 
 ADC::~ADC()
@@ -71,7 +71,7 @@ ADC::~ADC()
 	}
 }
 
-void ADC::InitPeripheral(adc_t adc, uint32_t resolution, Timer * triggerTimer)
+void ADC::InitPeripheral(adc_t adc, uint32_t resolution, TIM_TypeDef * triggerTimer)
 {
 	bool configureResource = false;
 
@@ -100,6 +100,17 @@ void ADC::InitPeripheral(adc_t adc, uint32_t resolution, Timer * triggerTimer)
 		memset(_hRes->map_channel2bufferIndex, 0xFF, sizeof(_hRes->map_channel2bufferIndex));
 		memset(_hRes->map_channel2bufferPtr, 0, sizeof(_hRes->map_channel2bufferPtr));
 		memset(_hRes->buffer, 0, sizeof(_hRes->buffer));
+
+		if (triggerTimer) {
+			if (triggerTimer != TIM1 && triggerTimer != TIM2 && triggerTimer != TIM3) {
+				_hRes = 0;
+				ERROR("Incorrect trigger timer for ADC");
+				return;
+			}
+			/* Set timer the trigger output (TRGO) */
+			LL_TIM_SetTriggerOutput(triggerTimer, LL_TIM_TRGO_UPDATE);
+			_hRes->triggerTimer = triggerTimer;
+		}
 
 		if (adc == ADC_1) {
 			// configure VREFINT channel as the first one, such that this channel is always read
@@ -213,14 +224,30 @@ void ADC::ConfigureADCPeripheral()
 	// Configure ADC trigger and sampling
 	if ((LL_ADC_IsEnabled(_hRes->instance) == 0) || (LL_ADC_REG_IsConversionOngoing(_hRes->instance) == 0))
 	{
-		/* Set ADC group regular trigger source */
-		LL_ADC_REG_SetTriggerSource(_hRes->instance, LL_ADC_REG_TRIG_SOFTWARE);
+		if (_hRes->triggerTimer) {
+			/* Set ADC group regular trigger source */
+			if (_hRes->triggerTimer == TIM1)
+				LL_ADC_REG_SetTriggerSource(_hRes->instance, LL_ADC_REG_TRIG_EXT_TIM1_TRGO);
+			else if (_hRes->triggerTimer == TIM2)
+				LL_ADC_REG_SetTriggerSource(_hRes->instance, LL_ADC_REG_TRIG_EXT_TIM2_TRGO);
+			else if (_hRes->triggerTimer == TIM3)
+				LL_ADC_REG_SetTriggerSource(_hRes->instance, LL_ADC_REG_TRIG_EXT_TIM3_TRGO);
 
-		/* Set ADC group regular trigger polarity */
-		//LL_ADC_REG_SetTriggerEdge(_hRes->instance, LL_ADC_REG_TRIG_EXT_RISING);
+			/* Set ADC group regular trigger polarity */
+			//LL_ADC_REG_SetTriggerEdge(_hRes->instance, LL_ADC_REG_TRIG_EXT_RISING);
 
-		/* Set ADC group regular continuous mode */
-		LL_ADC_REG_SetContinuousMode(_hRes->instance, LL_ADC_REG_CONV_CONTINUOUS);
+			/* Set ADC group regular continuous mode */
+			LL_ADC_REG_SetContinuousMode(_hRes->instance, LL_ADC_REG_CONV_SINGLE);
+		} else {
+			/* Set ADC group regular trigger source */
+			LL_ADC_REG_SetTriggerSource(_hRes->instance, LL_ADC_REG_TRIG_SOFTWARE);
+
+			/* Set ADC group regular trigger polarity */
+			//LL_ADC_REG_SetTriggerEdge(_hRes->instance, LL_ADC_REG_TRIG_EXT_RISING);
+
+			/* Set ADC group regular continuous mode */
+			LL_ADC_REG_SetContinuousMode(_hRes->instance, LL_ADC_REG_CONV_CONTINUOUS);
+		}
 
 		/* Set ADC group regular conversion data transfer */
 		LL_ADC_REG_SetDMATransfer(_hRes->instance, LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
@@ -516,13 +543,16 @@ void DMA1_Channel1_IRQHandler(void)
 		/* (global interrupt flag: half transfer and transfer complete flags) */
 		LL_DMA_ClearFlag_GI1(DMA1);
 
+		res->lastSampleTimestamp = HAL_GetHighResTick();
+
 		if (res->circularBufferEnabled)
 		{
+			uint16_t VREF = __LL_ADC_CALC_VREFANALOG_VOLTAGE(res->buffer[res->map_channel2bufferIndex[ADC::ADC_CHANNEL_VREFINT]], res->resolution);
 			ADC::measurement_t meas;
-			meas.timestamp = HAL_GetHighResTick();
+			meas.timestamp = res->lastSampleTimestamp;
 			for (uint8_t ch = ADC::ADC_CHANNEL_0; ch <= ADC::ADC_CHANNEL_15; ch++) {
 				if (res->map_channel2bufferPtr[ch]) {
-					meas.sample = res->buffer[res->map_channel2bufferIndex[ch]];
+					meas.mVolt = __LL_ADC_CALC_DATA_TO_VOLTAGE(VREF, res->buffer[res->map_channel2bufferIndex[ch]], res->resolution);
 					res->map_channel2bufferPtr[ch]->PushFromInterrupt(meas);
 				}
 			}
@@ -538,6 +568,36 @@ void DMA1_Channel1_IRQHandler(void)
 		/* Error detected during DMA transfer */
 		ERROR("DMA transfer error");
 	}
+}
+
+bool ADC::MeasurementAvailable()
+{
+	return _buffer.Available();
+}
+
+ADC::measurement_t ADC::GetMeasurement()
+{
+	if (_buffer.Available()) {
+		return _buffer.Pop();
+	} else {
+		ADC::measurement_t meas;
+		meas.timestamp = _hRes->lastSampleTimestamp;
+		meas.mVolt = Read_mVolt();
+		return meas;
+	}
+}
+
+ADC::measurement_t ADC::GetLatestMeasurement()
+{
+	ADC::measurement_t meas;
+	while (_buffer.AvailablePackets())
+		meas = _buffer.Pop();
+	return meas;
+}
+
+uint32_t ADC::GetLatestSampleTimestamp()
+{
+	return _hRes->lastSampleTimestamp;
 }
 
 int32_t ADC::ReadRaw()

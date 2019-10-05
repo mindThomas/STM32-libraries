@@ -33,7 +33,7 @@ template<typename T>
 class CircularBuffer
 {
 	public:
-		CircularBuffer(uint32_t size) : _buffer(0), _bufferSize(size), _bufferWriteIdx(0), _bufferReadIdx(0)
+		CircularBuffer(uint32_t size) : _buffer(0), _bufferSize(size), _bufferWriteIdx(0), _bufferReadIdx(0), _overrunDetected(false)
 		{
 			if (!size)
 				return;
@@ -79,8 +79,16 @@ class CircularBuffer
 			#endif
 
 			_buffer[_bufferWriteIdx] = packet;
-			_bufferWriteIdx++;
-			if (_bufferWriteIdx == _bufferSize) _bufferWriteIdx = 0;
+			/*_bufferWriteIdx++;
+			if (_bufferWriteIdx == _bufferSize) _bufferWriteIdx = 0;*/
+			_bufferWriteIdx = (_bufferWriteIdx + 1) % _bufferSize;
+			if (_bufferWriteIdx == _bufferReadIdx) {
+				if (_overrunDetected) { // overrun detected in previous write, so now we need to discard an old sample by increase the reading pointer
+					_bufferReadIdx = (_bufferReadIdx + 1) % _bufferSize;
+				} else {
+					_overrunDetected = true;
+				}
+			}
 
 			#ifdef USE_FREERTOS
 			xSemaphoreGive( _bufferSemaphore ); // give hardware resource back
@@ -92,34 +100,32 @@ class CircularBuffer
 			if (!_buffer) return; // error, buffer memory not available
 			if (AvailablePackets() >= _bufferSize) return; // error, buffer is full
 
-			#ifdef USE_FREERTOS
-			portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-			xSemaphoreTakeFromISR( _bufferSemaphore, &xHigherPriorityTaskWoken );
-			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-			#endif
-
 			_buffer[_bufferWriteIdx] = packet;
-			_bufferWriteIdx++;
-			if (_bufferWriteIdx == _bufferSize) _bufferWriteIdx = 0;
-
-			#ifdef USE_FREERTOS
-			portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-			xSemaphoreGiveFromISR( _bufferSemaphore, &xHigherPriorityTaskWoken );
-			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-			#endif
+			/*_bufferWriteIdx++;
+			if (_bufferWriteIdx == _bufferSize) _bufferWriteIdx = 0;*/
+			_bufferWriteIdx = (_bufferWriteIdx + 1) % _bufferSize;
+			if (_bufferWriteIdx == _bufferReadIdx) {
+				if (_overrunDetected) { // overrun detected in previous write, so now we need to discard an old sample by increase the reading pointer
+					_bufferReadIdx = (_bufferReadIdx + 1) % _bufferSize;
+				} else {
+					_overrunDetected = true;
+				}
+			}
 		}
 
 		T Pop()
 		{
-			if (AvailablePackets() == 0) return 0; // error, buffer is empty
+			if (AvailablePackets() == 0) return T(); // error, buffer is empty
 
 			#ifdef USE_FREERTOS
 			xSemaphoreTake( _bufferSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
 			#endif
 
 			T packet = _buffer[_bufferReadIdx];
-			_bufferReadIdx++;
-			if (_bufferReadIdx == _bufferSize) _bufferReadIdx = 0;
+			/*_bufferReadIdx++;
+			if (_bufferReadIdx == _bufferSize) _bufferReadIdx = 0;*/
+			_bufferReadIdx = (_bufferReadIdx + 1) % _bufferSize;
+			_overrunDetected = false;
 
 			#ifdef USE_FREERTOS
 			xSemaphoreGive( _bufferSemaphore ); // give hardware resource back
@@ -131,29 +137,29 @@ class CircularBuffer
 		// Pop as many bytes as possible
 		uint32_t PopAll(T * buffer, uint32_t bufferSize)
 		{
-			uint32_t poppedBytes = 0;
+			uint32_t poppedPackets = 0;
 			if (!buffer) return 0;
 
-			while (Available() && poppedBytes < bufferSize) {
-				buffer[poppedBytes] = Pop();
-				poppedBytes++;
+			while (Available() && poppedPackets < bufferSize) {
+				buffer[poppedPackets] = Pop();
+				poppedPackets++;
 			}
 
-			return poppedBytes;
+			return poppedPackets;
 		}
 
-		T * PopN(uint32_t numberOfBytesToPop)
+		T * PopN(uint32_t numberOfPacketsToPop)
 		{
 			T * popBuffer = 0;
-			if (numberOfBytesToPop > AvailablePackets()) return 0; // error, not enough content in buffer
+			if (numberOfPacketsToPop > AvailablePackets()) return 0; // error, not enough content in buffer
 		#ifdef USE_FREERTOS
-			popBuffer = (T *)pvPortMalloc(numberOfBytesToPop * sizeof(T));
+			popBuffer = (T *)pvPortMalloc(numberOfPacketsToPop * sizeof(T));
 		#else
-			popBuffer = (T *)malloc(numberOfBytesToPop * sizeof(T));
+			popBuffer = (T *)malloc(numberOfPacketsToPop * sizeof(T));
 		#endif
 
 			if (popBuffer) {
-				for (uint32_t i = 0; i < numberOfBytesToPop; i++) {
+				for (uint32_t i = 0; i < numberOfPacketsToPop; i++) {
 					popBuffer[i] = Pop();
 				}
 			}
@@ -185,6 +191,7 @@ class CircularBuffer
 		T * _buffer;
 		uint32_t _bufferWriteIdx;
 		uint32_t _bufferReadIdx;
+		bool _overrunDetected;
 		
 	#ifdef USE_FREERTOS
 		SemaphoreHandle_t _bufferSemaphore;
