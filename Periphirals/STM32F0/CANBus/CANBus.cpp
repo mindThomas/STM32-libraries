@@ -17,6 +17,7 @@
  */
  
 #include "CANBus.h"
+#include "stm32f0xx_hal_timebase_tim.h" // for HAL_GetHighResTick()
 
 #include "Priorities.h"
 #include "Debug.h"
@@ -28,6 +29,9 @@ CANBus::hardware_resource_t * CANBus::resCAN = 0;
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" __EXPORT void CEC_CAN_IRQHandler(void);
 extern "C" __EXPORT void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
+extern "C" __EXPORT void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan);
+extern "C" __EXPORT void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan);
+extern "C" __EXPORT void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan);
 
 CANBus::CANBus()
 {
@@ -78,7 +82,7 @@ void CANBus::InitPeripheral()
 		_hRes->configured = false;
 		_hRes->instances = 0;
 		
-		#ifdef USE_FREERTOS
+	#ifdef USE_FREERTOS
 		_hRes->resourceSemaphore = xSemaphoreCreateBinary();
 		if (_hRes->resourceSemaphore == NULL) {
 			_hRes = 0;
@@ -97,7 +101,19 @@ void CANBus::InitPeripheral()
 		vQueueAddToRegistry(_hRes->transmissionFinished, "CAN Finish");
 		xSemaphoreGive( _hRes->transmissionFinished ); // ensure that the semaphore is not taken from the beginning
 		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY ); // ensure that the semaphore is not taken from the beginning
-		#endif
+
+		_hRes->RXqueue = xQueueCreate( CAN_RX_QUEUE_LENGTH, sizeof(package_t) );
+		if (_hRes->RXqueue == NULL) {
+			ERROR("Could not create CAN RX queue");
+			return;
+		}
+		vQueueAddToRegistry(_hRes->RXqueue, "CAN RX");
+
+		xTaskCreate(CANBus::ProcessingThread, (char *)"CAN receiver", CAN_RX_PROCESSING_THREAD_STACK_SIZE, (void*) _hRes, CAN_RECEIVER_PRIORITY, &_hRes->RXprocessingTaskHandle);
+	#else
+		_hRes->transmissionFinished = true;
+		_hRes->resourceSemaphore = false;
+	#endif
 		
 		// Configure pins for CAN and CAN peripheral accordingly
 		/* Peripheral clock enable */
@@ -182,6 +198,13 @@ void CANBus::ConfigurePeripheral()
 		ERROR("Failed activating CAN RX notification");
 	}
 
+	/*##-5- Activate CAN TX notification #######################################*/
+	if (HAL_CAN_ActivateNotification(&_hRes->handle, CAN_IT_TX_MAILBOX_EMPTY) != HAL_OK)
+	{
+		/* Notification Error */
+		ERROR("Failed activating CAN TX notification");
+	}
+
 	_hRes->configured = true;
 }
 
@@ -192,12 +215,27 @@ bool CANBus::Transmit(uint32_t ID, uint8_t * Payload, uint8_t payloadLength)
 	
 #ifdef USE_FREERTOS
 	xSemaphoreTake( _hRes->resourceSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
-
-	// Consider to use task notifications instead: https://www.freertos.org/RTOS-task-notifications.html
-	// However using notifications can possibly lead to other problems if multiple objects are going to notify the same task simultaneously
-	if (uxSemaphoreGetCount(_hRes->transmissionFinished)) // semaphore is available to be taken - which it should not be at this state before starting the transmission, since we use the semaphore for flagging the finish transmission event
-		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY ); // something incorrect happened, as the transmissionFinished semaphore should always be taken before a transmission starts
+#else
+	if (_hRes->resourceSemaphore) return success; // resource already in use
+	_hRes->resourceSemaphore = true; // put resource in use
 #endif
+
+	// Check that we can push a message to the CAN Mailbox, otherwise wait
+	if (HAL_CAN_GetTxMailboxesFreeLevel(&_hRes->handle) == 0) {
+#ifdef USE_FREERTOS
+		// Wait for the transmission to finish
+		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY );
+#else
+		while (!_hRes->transmissionFinished);
+#endif
+	} else {
+#ifdef USE_FREERTOS
+		// Reset transmission to finish
+		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) 0 );
+#else
+		_hRes->transmissionFinished = false;
+#endif
+	}
 
 	if (payloadLength > 8) return success; // error, payload length too long
 	if (ID > 0x7FF) return success; // error, identifier out of bounds (only 11 bits available)
@@ -216,19 +254,62 @@ bool CANBus::Transmit(uint32_t ID, uint8_t * Payload, uint8_t payloadLength)
 	memcpy(TxData, Payload, payloadLength);
 
     /* Start the Transmission process */
-    if (HAL_CAN_AddTxMessage(&_hRes->handle, &_hRes->TxHeader, TxData, &_hRes->TxMailbox) != HAL_OK)
+	HAL_StatusTypeDef errCode = HAL_CAN_AddTxMessage(&_hRes->handle, &_hRes->TxHeader, TxData, &_hRes->TxMailbox);
+    if (errCode == HAL_OK)
     {
-		return success; // error
+    	success = true;
     }
-
-    success = true;
 
 #ifdef USE_FREERTOS
 	xSemaphoreGive( _hRes->resourceSemaphore ); // give hardware resource back
+#else
+	_hRes->resourceSemaphore = false; // finished using resource
 #endif
 
 	return success;
 }
+
+bool CANBus::registerCallback(uint16_t ID, void (*handler)(void * param, const package_t&), void * parameter)
+{
+	if (_hRes->callbackHandlers[ID].handler)
+		return false; // callback already registered - this ensures that we can not overwrite an existing registered callback
+
+	callback_t callback;
+	callback.handler = handler;
+	callback.param = parameter;
+
+	_hRes->callbackHandlers[ID] = callback;
+
+	return true;
+}
+
+bool CANBus::unregisterCallback(uint16_t ID)
+{
+	if (_hRes->callbackHandlers[ID].handler)
+		return false; // callback not registered already registered - this ensures that we can not overwrite an existing registered callback
+
+	_hRes->callbackHandlers.erase(_hRes->callbackHandlers.find(ID)); // remove/unregister the callback
+
+	return true;
+}
+
+#ifdef USE_FREERTOS
+void CANBus::ProcessingThread(void * pvParameters)
+{
+	hardware_resource_t * can = (hardware_resource_t *)pvParameters;
+	package_t package;
+
+	// CAN incoming data processing loop
+	while (1)
+	{
+		if ( xQueueReceive( can->RXqueue, &package, ( TickType_t ) portMAX_DELAY ) == pdPASS ) {
+			callback_t handler = can->callbackHandlers[package.ID];
+			if (handler.handler)
+				handler.handler(handler.param, package);
+		}
+	}
+}
+#endif
 
 void CEC_CAN_IRQHandler(void)
 {
@@ -252,17 +333,56 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
 	if (hcan->Instance != CAN && CANBus::resCAN) return; // error/unconfigured
 	CANBus::hardware_resource_t * can = CANBus::resCAN;
+	portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
 	/* Get RX message */
-	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can->RxHeader, can->RxData) != HAL_OK)
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can->RxHeader, can->RxPackage.Data) == HAL_OK)
 	{
+		if (can->RxHeader.IDE == CAN_ID_STD) {
+			// Convert received frame into CAN package type
+			can->RxPackage.ID = can->RxHeader.StdId;
+			can->RxPackage.DataLength = can->RxHeader.DLC;
+			can->RxPackage.Timestamp = HAL_GetHighResTick(); // could also be can->RxHeader.Timestamp
+
+		#ifdef USE_FREERTOS
+			if (can->RXqueue)
+				  xQueueSendFromISR(can->RXqueue, (void *)&can->RxPackage, &xHigherPriorityTaskWoken);
+		#endif
+		}
+	} else {
 		/* Reception Error */
 		Error_Handler();
 	}
 
-	// ToDo: Parse CAN package
-	if ((can->RxHeader.StdId == 0x321) && (can->RxHeader.IDE == CAN_ID_STD) && (can->RxHeader.DLC == 2))
-	{
+	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+}
 
-	}
+
+void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan)
+{
+	CANBus::TXFinishedInterrupt(CANBus::resCAN);
+}
+
+void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan)
+{
+	CANBus::TXFinishedInterrupt(CANBus::resCAN);
+}
+
+void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan)
+{
+	CANBus::TXFinishedInterrupt(CANBus::resCAN);
+}
+
+void CANBus::TXFinishedInterrupt(CANBus::hardware_resource_t * can)
+{
+	if (!can) return;
+
+	// Transmission finished
+#ifdef USE_FREERTOS
+	portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR( can->transmissionFinished, &xHigherPriorityTaskWoken );
+	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#else
+	can->transmissionFinished = true;
+#endif
 }
