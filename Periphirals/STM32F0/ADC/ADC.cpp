@@ -17,7 +17,7 @@
  */
  
 #include "ADC.h"
-#include "stm32f0xx_hal_timebase_tim.h"
+#include "stm32f0xx_hal_timebase_tim.h" // for HAL_GetHighResTick()
 
 #include "Debug.h"
 #include <string.h> // for memset
@@ -168,13 +168,13 @@ void ADC::ConfigureADCPeripheral()
 
 	// Stop ADC (if already running) to be able to configure
 	if (LL_ADC_REG_IsConversionOngoing(_hRes->instance) != RESET) {
-		LL_ADC_REG_StopConversion(_hRes->instance);
-		LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
-		LL_ADC_Disable(_hRes->instance);
+		//LL_ADC_REG_StopConversion(_hRes->instance);
+		//LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
+		//LL_ADC_Disable(_hRes->instance);
 
+		LL_DMA_DeInit(DMA1, LL_DMA_CHANNEL_1);
 		LL_ADC_DeInit(_hRes->instance);
 		LL_ADC_CommonDeInit(__LL_ADC_COMMON_INSTANCE(_hRes->instance));
-		LL_DMA_DeInit(DMA1, LL_DMA_CHANNEL_1);
 		while (LL_ADC_IsDisableOngoing(_hRes->instance));
 	}
 
@@ -195,7 +195,7 @@ void ADC::ConfigureADCPeripheral()
 	if (LL_ADC_IsEnabled(_hRes->instance) == 0)
 	{
 		/* Set ADC clock (conversion clock) */
-		LL_ADC_SetClock(_hRes->instance, LL_ADC_CLOCK_SYNC_PCLK_DIV4);
+		LL_ADC_SetClock(_hRes->instance, LL_ADC_CLOCK_SYNC_PCLK_DIV2);
 
 		/* Set ADC data resolution */
 		if (_hRes->resolution == LL_ADC_RESOLUTION_8B) {
@@ -590,8 +590,13 @@ ADC::measurement_t ADC::GetMeasurement()
 ADC::measurement_t ADC::GetLatestMeasurement()
 {
 	ADC::measurement_t meas;
-	while (_buffer.AvailablePackets())
-		meas = _buffer.Pop();
+	if (_buffer.Available()) {
+		while (_buffer.AvailablePackets())
+			meas = _buffer.Pop();
+	} else {
+		meas.timestamp = _hRes->lastSampleTimestamp;
+		meas.mVolt = Read_mVolt();
+	}
 	return meas;
 }
 

@@ -21,6 +21,7 @@
 
 #include "stm32f0xx_hal.h"
 
+#include "Debug.h" // for error messages
 #include <string.h> // for memset
 
 #ifdef USE_FREERTOS

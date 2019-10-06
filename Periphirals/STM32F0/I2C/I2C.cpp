@@ -376,9 +376,6 @@ bool I2C::ReadInterrupt(uint8_t reg, uint8_t * buffer, uint8_t readLength)
 #else
 	if (_hRes->resourceSemaphore) return success; // resource already in use
 	_hRes->resourceSemaphore = true; // put resource in use
-#endif
-
-#ifndef USE_FREERTOS
 	_hRes->transmissionFinished = false;
 #endif
 
@@ -418,45 +415,6 @@ bool I2C::ReadInterrupt(uint8_t reg, uint8_t * buffer, uint8_t readLength)
 
 	return success;
 }
-
-#if 0
-bool I2C::Read(uint8_t reg, uint8_t * buffer, uint8_t readLength)
-{
-	bool success = false;
-	if (!_hRes) return success;
-	xSemaphoreTake( _hRes->resourceSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
-
-	if (uxSemaphoreGetCount(_hRes->transmissionFinished)) // semaphore is available to be taken - which it should not be at this state before starting the transmission, since we use the semaphore for flagging the finish transmission event
-		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY ); // something incorrect happened, as the transmissionFinished semaphore should always be taken before a transmission starts
-
-	/*uint8_t * txBuffer = (uint8_t *)pvPortMalloc(readLength+1);
-	uint8_t * rxBuffer = (uint8_t *)pvPortMalloc(readLength+1);
-
-	if (!txBuffer || !rxBuffer) return;
-
-	memset(txBuffer, 0, readLength+1);
-	txBuffer[0] = reg;*/
-
-	if (HAL_I2C_Mem_Read_IT(&_hRes->handle, (uint16_t)_devAddr, reg, I2C_MEMADD_SIZE_8BIT, buffer, readLength) == HAL_OK)
-	{
-		// Wait for the transmission to finish
-		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY );
-		success = true;
-	} else {
-		DEBUG("Failed I2C transmission");
-	}
-
-	//uint32_t errCode = HAL_I2C_GetError(&_hRes->handle);
-
-	/*memcpy(buffer, &rxBuffer[1], readLength);
-
-	vPortFree(txBuffer);
-	vPortFree(rxBuffer);*/
-
-	xSemaphoreGive( _hRes->resourceSemaphore ); // give hardware resource back
-	return success;
-}
-#endif
 
 void I2C1_IRQHandler(void)
 {
