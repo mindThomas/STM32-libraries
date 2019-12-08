@@ -19,6 +19,8 @@
 #ifndef MODULES_DEBUG_H
 #define MODULES_DEBUG_H
 
+#define DEBUG_PRINTF_ENABLED	0
+
 #ifdef __cplusplus // for C++ usage
 
 #include <stdarg.h>
@@ -28,7 +30,9 @@
 #include <cstring>
 #include <string>
 
+#ifdef USE_FREERTOS
 #include "cmsis_os.h" // for semaphore
+#endif
 #include "Priorities.h"
 
 #define DEBUG(msg)	Debug::Message("DEBUG: ", __PRETTY_FUNCTION__, msg)
@@ -43,9 +47,10 @@ class Debug
 		const uint32_t THREAD_PRIORITY = DEBUG_MESSAGE_PRIORITY;
 
 	public:
-		Debug(void * com);
+		Debug();
 		~Debug();
 	
+		static void AssignDebugCOM(void * com);
 		static void Message(const char * type, const char * functionName, const char * msg);
 		static void Message(std::string type, const char * functionName, std::string msg);
 		static void Message(const char * functionName, const char * msg);
@@ -55,23 +60,32 @@ class Debug
 		static void print(const char * msg);
 		static void printf( const char *msgFmt, ... );
 		static void Error(const char * type, const char * functionName, const char * msg);
+		static void SetDebugPin(void * pin);
 		static void Pulse();
+		static void Toggle();
 
+#ifdef USE_FREERTOS
 	private:
 		static void PackageGeneratorThread(void * pvParameters);
+#endif
 
 	private:
-		void * com_; // LSPC object pointer
+		void * com_{0}; // LSPC object pointer
+	#ifdef USE_FREERTOS
 		SemaphoreHandle_t mutex_;
 		TaskHandle_t _TaskHandle;
-		void * debugPulsePin_;
+	#endif
+		void * debugPulsePin_{0}; // of class IO
 
+	#if DEBUG_PRINTF_ENABLED
 		char messageBuffer_[MAX_DEBUG_TEXT_LENGTH];
 		uint16_t currentBufferLocation_;
+	#endif
 
 
 	public:
-		static Debug * debugHandle;
+		static Debug debugHandle;
+		static bool handleCreated;
 
 };
 

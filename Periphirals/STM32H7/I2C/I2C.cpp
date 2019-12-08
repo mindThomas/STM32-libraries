@@ -417,6 +417,8 @@ void I2C::ConfigurePeripheral()
 			ERROR("Could not initialize digital filters for I2C port");
 			return;
 		}
+
+		_hRes->configured = true;
 	}
 }
 

@@ -133,9 +133,13 @@ void ADC::InitPeripheral(adc_t adc, uint32_t resolution, TIM_TypeDef * triggerTi
 		return;
 	}
 
-    _hRes->numberOfConfiguredChannels++;
 	_hRes->map_channel2bufferIndex[_channel] = _hRes->numberOfConfiguredChannels; // set to maximum before reordering
-	_hRes->map_channel2bufferPtr[_channel] = &_buffer;
+	_hRes->numberOfConfiguredChannels++;
+
+	if (_buffer.FreeSpace()) {
+		_hRes->circularBufferEnabled = true;
+		_hRes->map_channel2bufferPtr[_channel] = &_buffer;
+	}
 
 	// Reorder map_channel2bufferIndex
 	uint8_t bufferIndex = 1;
@@ -145,9 +149,6 @@ void ADC::InitPeripheral(adc_t adc, uint32_t resolution, TIM_TypeDef * triggerTi
 		}
 	}
 	_hRes->map_channel2bufferIndex[ADC_CHANNEL_TEMPSENSOR] = _hRes->numberOfConfiguredChannels - 1;
-
-	if (_buffer.FreeSpace())
-		_hRes->circularBufferEnabled = true;
 
 	ConfigureADCGPIO();
 	ConfigureADCPeripheral();
@@ -218,7 +219,7 @@ void ADC::ConfigureADCPeripheral()
 		//LL_ADC_SetLowPowerMode(_hRes->instance, LL_ADC_LP_MODE_NONE);
 
 		/* Set ADC channels sampling time (is configured common to all channels) */
-		LL_ADC_SetSamplingTimeCommonChannels(_hRes->instance, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+		LL_ADC_SetSamplingTimeCommonChannels(_hRes->instance, LL_ADC_SAMPLINGTIME_41CYCLES_5);
 	}
 
 	// Configure ADC trigger and sampling
@@ -370,7 +371,7 @@ void ADC::ConfigureADCPeripheral()
 	else
 	{
 		/* Error: ADC conversion start could not be performed */
-		ERROR("Could not start ADC conversion")
+		ERROR("Could not start ADC conversion");
 	}
 
 	/* Retrieve ADC conversion data */
@@ -520,7 +521,7 @@ void ADC1_IRQHandler(void)
 		LL_ADC_DisableIT_OVR(ADC1);
 
 		/* Error from ADC */
-		ERROR("ADC Overrun")
+		ERROR("ADC Overrun");
 	}
 
 	/* Check whether ADC group regular overrun caused the ADC interruption */
@@ -543,6 +544,7 @@ void DMA1_Channel1_IRQHandler(void)
 		/* (global interrupt flag: half transfer and transfer complete flags) */
 		LL_DMA_ClearFlag_GI1(DMA1);
 
+		Debug::Toggle();
 		res->lastSampleTimestamp = HAL_GetHighResTick();
 
 		if (res->circularBufferEnabled)
@@ -557,6 +559,8 @@ void DMA1_Channel1_IRQHandler(void)
 				}
 			}
 		}
+
+		Debug::Toggle();
 	}
 
 	/* Check whether DMA transfer error caused the DMA interruption */

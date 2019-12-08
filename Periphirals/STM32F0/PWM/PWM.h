@@ -28,6 +28,12 @@
 #include "stm32f0xx_ll_exti.h"
 #include "stm32f0xx_ll_tim.h"
 
+#include "IO.h"
+
+#ifdef USE_FREERTOS
+#include "cmsis_os.h" // for semaphore support
+#endif
+
 #define TIM_SET_COMPARE(__INSTANCE__, __CHANNEL__, __COMPARE__) \
 (*(__IO uint32_t *)(&((__INSTANCE__)->CCR1) + ((__CHANNEL__) >> 2U)) = (__COMPARE__))   // modified from stm32f0xx_hal_tim.h
 
@@ -78,6 +84,7 @@ class PWM
 			uint16_t maxValue;
 			uint8_t configuredChannels; // each bit indicate whether the corresponding channel is configured and in use by another object
 			TIM_TypeDef * instance;
+			IO * togglePin;
 		} hardware_resource_t;
 
 		static hardware_resource_t * resTIMER1;
@@ -86,6 +93,8 @@ class PWM
 		static hardware_resource_t * resTIMER14;
 		static hardware_resource_t * resTIMER16;
 		static hardware_resource_t * resTIMER17;
+
+		static void InterruptHandler(hardware_resource_t * timer);
 
 	private:
 		hardware_resource_t * _hRes;

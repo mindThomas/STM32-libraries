@@ -436,6 +436,8 @@ void SPI::ConfigurePeripheral()
 		}
 
 		osDelay(10); // wait 10 ms for clock to stabilize
+
+		_hRes->configured = true;
 	}
 }
 

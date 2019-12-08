@@ -221,12 +221,17 @@ bool CANBus::Transmit(uint32_t ID, uint8_t * Payload, uint8_t payloadLength)
 #endif
 
 	// Check that we can push a message to the CAN Mailbox, otherwise wait
+	// Make sure that CAN bus is terminated, otherwise the TX mailboxes will fill up and the task will hang here!
 	if (HAL_CAN_GetTxMailboxesFreeLevel(&_hRes->handle) == 0) {
 #ifdef USE_FREERTOS
 		// Wait for the transmission to finish
-		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY );
+		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) TX_TIMEOUT );
 #else
-		while (!_hRes->transmissionFinished);
+		uint16_t timeout = TX_TIMEOUT;
+		while (!_hRes->transmissionFinished && timeout > 0) {
+			HAL_Delay(1);
+			timeout--;
+		}
 #endif
 	} else {
 #ifdef USE_FREERTOS
@@ -351,7 +356,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		}
 	} else {
 		/* Reception Error */
-		Error_Handler();
+		ERROR("Reception error");
 	}
 
 	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );

@@ -17,6 +17,7 @@
  */
  
 #include "PWM.h"
+#include "Priorities.h"
 #include "Debug.h"
 
 #include <string.h> // for memset
@@ -28,6 +29,8 @@ PWM::hardware_resource_t * PWM::resTIMER3 = 0;
 PWM::hardware_resource_t * PWM::resTIMER14 = 0;
 PWM::hardware_resource_t * PWM::resTIMER16 = 0;
 PWM::hardware_resource_t * PWM::resTIMER17 = 0;
+
+extern "C" __EXPORT void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
 
 PWM::PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue) : _channel(channel), _channelLL(0), _channelHAL(0)
 {
@@ -175,6 +178,12 @@ void PWM::ConfigureTimerPeripheral()
 	if (_hRes->timer == TIMER1) {
 		LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_TIM1);  //__HAL_RCC_TIM1_CLK_ENABLE();
 		_hRes->instance = TIM1;
+
+		NVIC_SetPriority(TIM1_BRK_UP_TRG_COM_IRQn, TIMER_INTERRUPT_PRIORITY);
+		NVIC_EnableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
+
+		/* Enable the update interrupt */
+		LL_TIM_EnableIT_UPDATE(_hRes->instance);
 	}
 	else if (_hRes->timer == TIMER3) {
 		LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM3);  //__HAL_RCC_TIM3_CLK_ENABLE();
@@ -184,8 +193,8 @@ void PWM::ConfigureTimerPeripheral()
 		// TODO: INSERT OTHER TIMERS HERE
 	}
 
-	TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
-	TIM_InitStruct.RepetitionCounter = 0;
+	TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_CENTER_UP;
+	TIM_InitStruct.RepetitionCounter = 1; // 0==update IRQ on both overflow+underflow event,  1==update IRQ on only overflow event
 	TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
 	TIM_InitStruct.Autoreload = _hRes->maxValue - 1; // this will allow duty cycles (CCR register) to go from 0 to maxValue, with maxValue giving 100% duty cycle (fully on)
 
@@ -198,7 +207,7 @@ void PWM::ConfigureTimerPeripheral()
 	if (LL_RCC_GetAPB1Prescaler() != LL_RCC_APB1_DIV_1)
 		TimerClock *= 2;
 	// Added prescaler computation as float such that rounding can happen
-	float prescaler = ((float)TimerClock / ((TIM_InitStruct.Autoreload+1) * _hRes->frequency)) - 1;
+	float prescaler = ((float)TimerClock / (2 * (TIM_InitStruct.Autoreload+1) * _hRes->frequency)) - 1;  // factor 1/2 due to center-aligned PWM mode
 	TIM_InitStruct.Prescaler = roundf(prescaler);
 
 	if (TIM_InitStruct.Prescaler > 0xFFFF) {
@@ -360,4 +369,25 @@ void PWM::SetRaw(uint16_t value)
 	if (value > _hRes->maxValue) value = _hRes->maxValue;
 
 	TIM_SET_COMPARE(_hRes->instance, _channelHAL, value);
+}
+
+
+void PWM::InterruptHandler(PWM::hardware_resource_t * timer)
+{
+	/* TIM Update event */
+	if(LL_TIM_IsActiveFlag_UPDATE(timer->instance) == 1)
+	{
+		/* Clear the update interrupt flag*/
+		LL_TIM_ClearFlag_UPDATE(timer->instance);
+
+		// Do something here
+	}
+}
+
+void TIM1_BRK_UP_TRG_COM_IRQHandler(void)
+{
+	if (PWM::resTIMER1)
+		PWM::InterruptHandler(PWM::resTIMER1);
+	else
+		TIM1->SR = ~(uint32_t)(TIM_SR_UIF | TIM_SR_CC1IF | TIM_SR_CC2IF | TIM_SR_CC3IF | TIM_SR_CC4IF | TIM_SR_COMIF | TIM_SR_TIF | TIM_SR_BIF); // clear all interrupts
 }
