@@ -19,8 +19,6 @@
 #ifndef MODULES_DEBUG_H
 #define MODULES_DEBUG_H
 
-#define DEBUG_PRINTF_ENABLED	0
-
 #ifdef __cplusplus // for C++ usage
 
 #include <stdarg.h>
@@ -77,7 +75,7 @@ class Debug
 	#endif
 		void * debugPulsePin_{0}; // of class IO
 
-	#if DEBUG_PRINTF_ENABLED
+	#ifdef DEBUG_PRINTF_ENABLED
 		char messageBuffer_[MAX_DEBUG_TEXT_LENGTH];
 		uint16_t currentBufferLocation_;
 	#endif

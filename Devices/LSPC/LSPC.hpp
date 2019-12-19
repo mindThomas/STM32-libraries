@@ -6,8 +6,11 @@
 #include "SocketBase.hpp"
 #include "Debug.h"
 #include "cmsis_os.h" // for task creation
+#if defined(LSPC_USB)
 #include "USBCDC.h"
+#elif defined(LSPC_UART)
 #include "UART.h"
+#endif
 #include "MessageTypes.h"
 
 #define LSPC_MAX_ASYNCHRONOUS_PACKAGE_SIZE			100  // bytes

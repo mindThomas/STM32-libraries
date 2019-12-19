@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-/* OBS. Remember to keep this file consistent across the Embedded Firmware (Kugle-Embedded) and ROS Driver (Kugle-ROS) */
+/* OBS. Remember to keep this file consistent across the Embedded Firmware and ROS Driver */
 
 #ifndef LSPC_MESSAGE_TYPES_HPP
 #define LSPC_MESSAGE_TYPES_HPP

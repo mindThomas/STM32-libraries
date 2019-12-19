@@ -56,7 +56,7 @@ float PID::Step(const float state, const float ref)
 
 float PID::Step(const float state, const float ref, const float dt)
 {
-	float error = state - ref;
+	float error = ref - state;
 
 	float derror = 0;
 	if (dt > 0)
