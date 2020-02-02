@@ -20,7 +20,7 @@
 #include <math.h>
  
 RCReceiver::RCReceiver(InputCapture::timer_t timer, InputCapture::ic_channel_t channel, float min_ms, float max_ms) :
-InputCapture(timer, channel, 1.0f), _min(min_ms/1000), _max(max_ms/1000)
+InputCapture(timer, channel, 0.1f), _min(min_ms/1000), _max(max_ms/1000)
 {
 }
 

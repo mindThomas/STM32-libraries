@@ -25,7 +25,7 @@ class Servo : private PWM
 {
 	
 public:
-	Servo(timer_t timer, pwm_channel_t channel, float min = -1.0f, float max = 1.0f, float min_ms = 1.0f, float max_ms = 2.0f, uint16_t range_resolution_steps = 200);
+	Servo(timer_t timer, pwm_channel_t channel, float min = -1.0f, float max = 1.0f, float min_ms = 1.0f, float max_ms = 2.0f, uint16_t range_resolution_steps = 2048);
 	
 	void Set(float value);
 	void Disable();
