@@ -16,27 +16,30 @@
  * ------------------------------------------
  */
  
-#ifndef DRIVERS_SERVO_H
-#define DRIVERS_SERVO_H
+#ifndef MODULES_CPULOAD_H
+#define MODULES_CPULOAD_H
 
-#include "PWM.h"
+#include "cmsis_os.h" // for processing task
 
-class Servo : private PWM
+#include "LSPC.hpp"
+
+class CPULoad
 {
-	
-public:
-	Servo(timer_t timer, pwm_channel_t channel, float min = -1.0f, float max = 1.0f, float min_ms = 1.0f, float max_ms = 2.0f, uint16_t range_resolution_steps = 200);
-	
-	void Set(float value);
-	void Disable();
+	private:
+		const uint32_t CPULOAD_THREAD_STACK = 256;
 
-private:	
-	float _min_ms;
-	float _min_value;
-	float _max_ms;	
-	float _max_value;
-	float _ms_resolution;
-	
+	public:
+		CPULoad(LSPC& lspc, uint32_t cpuLoadTaskPriority);
+		~CPULoad();
+
+	private:
+		TaskHandle_t _cpuLoadTaskHandle;
+
+		LSPC& _lspc;
+
+	private:
+		static void CPULoadThread(void * pvParameters);
+		
 };
 	
 	

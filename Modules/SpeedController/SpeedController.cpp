@@ -19,11 +19,19 @@
 #include "SpeedController.h"
 #include "cmsis_os.h" // for processing task
 #include "MathLib.h"
+#include <math.h>
 
 #include "Debug.h"
 
-SpeedController::SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, uint32_t speedControllerPriority) : _speedControllerTaskHandle(0), _lspc(lspc), _microsTimer(microsTimer), _motor(motor), _encoder(encoder), _controller(KP, KI, KD, &microsTimer), _enabled(false), _speed(0)
+int32_t SpeedController::EncoderDiff = 0;
+float SpeedController::SpeedRaw;
+float SpeedController::SpeedFiltered;
+float SpeedController::SpeedSetpoint;
+float SpeedController::MotorOutput;
+
+SpeedController::SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, const uint32_t EncoderTicksPrRev, uint32_t speedControllerPriority) : _speedControllerTaskHandle(0), _lspc(lspc), _microsTimer(microsTimer), _motor(motor), _encoder(encoder), TicksPrRev(EncoderTicksPrRev), _controller(KP, KI, KD, &microsTimer), _speedLPF(1.0f / SAMPLE_RATE, LPF_TAU), _enabled(false), _speed(0)
 {
+	motor.Disable();
 	xTaskCreate(SpeedController::SpeedControllerThread, (char *)"Speed Controller", SPEED_CONTROLLER_THREAD_STACK, (void*) this, speedControllerPriority, &_speedControllerTaskHandle);
 }
 
@@ -57,7 +65,7 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 	uint32_t prevTimerValue2; // used for measuring dt
 
 	/* Motor speed variables */
-	volatile float dpsi = 0;
+	volatile float dpsi_filtered = 0;
 	volatile int32_t prevEncoderTicks = 0;
 	volatile float prevMotorAngle = 0;
 
@@ -69,6 +77,18 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 	Servo& motor = controller->_motor;
 	Encoder& encoder = controller->_encoder;
 	PID& pid = controller->_controller;
+
+	/* Wait until the controller is enabled */
+	while (!controller->_enabled) osDelay(10);
+	/* Enable motor by calibrating ESC */
+	motor.Disable();
+	osDelay(100);
+	motor.Set(0);
+	osDelay(1500);
+	/*motor.Disable();
+	osDelay(100);
+	motor.Set(0);
+	osDelay(1000);*/
 
 	/* Main loop */
 	xLastWakeTime = xTaskGetTickCount();
@@ -82,9 +102,15 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 		if (!controller->_enabled) {
 			motor.Disable();
 			while (!controller->_enabled) osDelay(10);
-			// Calibrate/enable servos
+			// Enable motor by calibrating ESC
+			motor.Disable();
+			osDelay(100);
 			motor.Set(0);
-			osDelay(500);
+			osDelay(100);
+			motor.Disable();
+			osDelay(100);
+			motor.Set(0);
+			osDelay(1000);
 		}
 
 		volatile float dt = microsTimer.GetDeltaTime(prevTimerValue);
@@ -92,14 +118,26 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 
 		/* Estimate velocity from encoders */
 		volatile int32_t encoderTicks = encoder.Get();
+		controller->EncoderDiff = encoderTicks - prevEncoderTicks;
 		volatile float EncoderDiffMeas = (float)(encoderTicks - prevEncoderTicks);
 		prevEncoderTicks = encoderTicks;
 
-		float EncoderConversionRatio = 2.f * M_PI / controller->TicksPrRev;
-		dpsi = EncoderConversionRatio * EncoderDiffMeas;
+		float EncoderConversionRatio = M_2PI / controller->TicksPrRev;
+		float dpsi = EncoderConversionRatio * EncoderDiffMeas / dt;
+		dpsi_filtered = controller->_speedLPF.Filter(dpsi);
+
+		controller->SpeedRaw = dpsi;
+		controller->SpeedFiltered = dpsi_filtered;
+		controller->SpeedSetpoint = controller->_speed;
 
 		/* Compute control */
-		float output = pid.Step(dpsi, controller->_speed);
+		float output = controller->_speed*(0.3 / 5.0f) + pid.Step(dpsi_filtered, controller->_speed, (fabs(controller->_speed) > controller->MIN_INTEGRATOR_SPEED) );
+
+		/* Control the direction change */
+		if (controller->_speed > controller->MIN_SPEED) // driving forward
+			if (output < controller->DEADBAND) output = controller->DEADBAND;
+		if (controller->_speed < -controller->MIN_SPEED) // driving forward
+			if (output > -controller->DEADBAND) output = -controller->DEADBAND;
 
 		/* Saturate output */
 		if (output > 1.0f) output = 1.0f;
@@ -107,5 +145,7 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 
 		/* Set output */
 		motor.Set(output);
+
+		controller->MotorOutput = output;
 	}
 }
