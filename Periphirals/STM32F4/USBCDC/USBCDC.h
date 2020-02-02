@@ -36,7 +36,7 @@ class USBCDC
 		const int USBCDC_RX_QUEUE_LENGTH = 10;
 
 	public:
-		USBCDC(uint32_t transmitterTaskPriority);
+		USBCDC(uint32_t transmitterTaskPriority, const char * productString = 0, uint32_t PID = USBD_PID_DEFAULT, uint32_t VID = USBD_VID_DEFAULT);
 		~USBCDC();
 		bool GetPackage(USB_CDC_Package_t * packageBuffer);
 		void Write(uint8_t byte);

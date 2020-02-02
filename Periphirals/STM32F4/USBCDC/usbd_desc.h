@@ -30,7 +30,14 @@
 #include "usbd_def.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+#define USBD_VID_DEFAULT     0x0483//1155
+#define USBD_LANGID_STRING     1033
+#define USBD_MANUFACTURER_STRING     "STMicroelectronics"
+#define USBD_PID_DEFAULT     0x5799//22336
+#define USBD_PRODUCT_STRING_DEFAULT     "STM32 Serial Port"
+#define USBD_SERIALNUMBER_STRING_DEFAULT     "001337001234"
+#define USBD_CONFIGURATION_STRING_FS     "CDC Config"
+#define USBD_INTERFACE_STRING_FS     "CDC Interface"
 /* USER CODE END INCLUDE */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -121,7 +128,9 @@ extern USBD_DescriptorsTypeDef FS_Desc;
   */
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-
+void USBD_Set_VID_PID(uint32_t VID, uint32_t PID);
+void USBD_Set_ProductString(const uint8_t * stringPtr);
+void USBD_Set_SerialString(const uint8_t * stringPtr);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
