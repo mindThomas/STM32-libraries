@@ -730,7 +730,7 @@ uint8_t UART::BufferPop()
 uint32_t UART::BufferContentSize()
 {
 	if (!_bufferLength) return 0; // error, buffer not enabled
-	uint32_t length = (_bufferWriteIdx - _bufferReadIdx) % _bufferLength;
+	uint32_t length = (uint32_t)(((int32_t)_bufferWriteIdx - (int32_t)_bufferReadIdx) % (int32_t)_bufferLength);
 
 	return length;
 }
