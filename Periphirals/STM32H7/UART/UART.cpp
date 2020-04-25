@@ -474,8 +474,10 @@ void UART::UART_IncomingDataInterrupt(UART * uart)
 	//__HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST); // should already have been cleared by reading
 
 	uart->BufferPush(uart->rxByte); // push into local buffer
-	if (uart->_RXcallback && uart->_callbackTaskHandle)
-		xTaskResumeFromISR(uart->_callbackTaskHandle);
+	if (uart->_RXcallback && uart->_callbackTaskHandle) {
+		portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(uart->_callbackTaskHandle);
+		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+	}
 
   if (uart->_RXdataAvailable)
 	  xSemaphoreGiveFromISR( uart->_RXdataAvailable, &xHigherPriorityTaskWoken );

@@ -305,8 +305,10 @@ void Timer::InterruptHandler(Timer::hardware_resource_t * timer)
 			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 		}
 
-		if (timer->callbackTaskHandle)
-			xTaskResumeFromISR(timer->callbackTaskHandle);
+		if (timer->callbackTaskHandle) {
+			portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(timer->callbackTaskHandle);
+			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+		}
 #endif
 	}
 }

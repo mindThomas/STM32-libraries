@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -17,7 +17,7 @@
  */
  
 #include "Timer.h"
-#include "stm32h7xx_hal.h"
+#include "stm32g4xx_hal.h"
 #include "Priorities.h"
 #include "Debug.h"
 #include <string.h> // for memset
@@ -25,14 +25,14 @@
 
 Timer::hardware_resource_t * Timer::resTIMER6 = 0;
 Timer::hardware_resource_t * Timer::resTIMER7 = 0;
-Timer::hardware_resource_t * Timer::resTIMER12 = 0;
-Timer::hardware_resource_t * Timer::resTIMER13 = 0;
+Timer::hardware_resource_t * Timer::resTIMER8 = 0;
+Timer::hardware_resource_t * Timer::resTIMER17 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" __EXPORT void TIM6_DAC_IRQHandler(void);
 extern "C" __EXPORT void TIM7_IRQHandler(void);
-extern "C" __EXPORT void TIM8_BRK_TIM12_IRQHandler(void);
-extern "C" __EXPORT void TIM8_UP_TIM13_IRQHandler(void);
+extern "C" __EXPORT void TIM8_UP_IRQHandler(void);
+extern "C" __EXPORT void TIM1_TRG_COM_TIM17_IRQHandler(void);
 
 Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSemaphore(0)
 {
@@ -46,15 +46,15 @@ Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSe
 		memset(resTIMER7, 0, sizeof(Timer::hardware_resource_t));
 		_hRes = resTIMER7;
 	}
-	else if (timer == TIMER12 && !resTIMER12) {
-		resTIMER12 = new Timer::hardware_resource_t;
-		memset(resTIMER12, 0, sizeof(Timer::hardware_resource_t));
-		_hRes = resTIMER12;
+	else if (timer == TIMER8 && !resTIMER8) {
+		resTIMER8 = new Timer::hardware_resource_t;
+		memset(resTIMER8, 0, sizeof(Timer::hardware_resource_t));
+		_hRes = resTIMER8;
 	}
-	else if (timer == TIMER13 && !resTIMER13) {
-		resTIMER13 = new Timer::hardware_resource_t;
-		memset(resTIMER13, 0, sizeof(Timer::hardware_resource_t));
-		_hRes = resTIMER13;
+	else if (timer == TIMER17 && !resTIMER17) {
+		resTIMER17 = new Timer::hardware_resource_t;
+		memset(resTIMER17, 0, sizeof(Timer::hardware_resource_t));
+		_hRes = resTIMER17;
 	}
 	else {
 		_hRes = 0;
@@ -96,15 +96,15 @@ Timer::~Timer()
 		HAL_NVIC_DisableIRQ(TIM7_IRQn);
 		resTIMER7 = 0;
 	}
-	else if (tmpTimer == TIMER12) {
-		__HAL_RCC_TIM12_CLK_DISABLE();
-		HAL_NVIC_DisableIRQ(TIM8_BRK_TIM12_IRQn);
-		resTIMER12 = 0;
+	else if (tmpTimer == TIMER8) {
+		__HAL_RCC_TIM8_CLK_DISABLE();
+		HAL_NVIC_DisableIRQ(TIM8_UP_IRQn);
+		resTIMER8 = 0;
 	}
-	else if (tmpTimer == TIMER13) {
-		__HAL_RCC_TIM13_CLK_DISABLE();
-		HAL_NVIC_DisableIRQ(TIM8_UP_TIM13_IRQn);
-		resTIMER13 = 0;
+	else if (tmpTimer == TIMER17) {
+		__HAL_RCC_TIM17_CLK_DISABLE();
+		HAL_NVIC_DisableIRQ(TIM1_TRG_COM_TIM17_IRQn);
+		resTIMER17 = 0;
 	}
 	else {
 		ERROR("Undefined timer");
@@ -118,27 +118,32 @@ void Timer::ConfigureTimerPeripheral()
 
 	TIM_ClockConfigTypeDef sClockSourceConfig = {0};
 	TIM_MasterConfigTypeDef sMasterConfig = {0};
+	uint32_t TimerClock = 0;
 
 	if (_hRes->timer == TIMER6) {
 		__HAL_RCC_TIM6_CLK_ENABLE();
 		HAL_NVIC_SetPriority(TIM6_DAC_IRQn, TIMER_INTERRUPT_PRIORITY, 0);
 		HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
 		_hRes->handle.Instance = TIM6;
+		TimerClock = HAL_RCC_GetPCLK1Freq();
 	} else if (_hRes->timer == TIMER7) {
 		__HAL_RCC_TIM7_CLK_ENABLE();
 		HAL_NVIC_SetPriority(TIM7_IRQn, TIMER_INTERRUPT_PRIORITY, 0);
 		HAL_NVIC_EnableIRQ(TIM7_IRQn);
 		_hRes->handle.Instance = TIM7;
-	} else if (_hRes->timer == TIMER12) {
-		__HAL_RCC_TIM12_CLK_ENABLE();
-		HAL_NVIC_SetPriority(TIM8_BRK_TIM12_IRQn, TIMER_INTERRUPT_PRIORITY, 0);
-		HAL_NVIC_EnableIRQ(TIM8_BRK_TIM12_IRQn);
-		_hRes->handle.Instance = TIM12;
-	} else if (_hRes->timer == TIMER13) {
-		__HAL_RCC_TIM13_CLK_ENABLE();
-		HAL_NVIC_SetPriority(TIM8_UP_TIM13_IRQn, TIMER_INTERRUPT_PRIORITY, 0);
-		HAL_NVIC_EnableIRQ(TIM8_UP_TIM13_IRQn);
-		_hRes->handle.Instance = TIM13;
+		TimerClock = HAL_RCC_GetPCLK1Freq();
+	} else if (_hRes->timer == TIMER8) {
+		__HAL_RCC_TIM8_CLK_ENABLE();
+		HAL_NVIC_SetPriority(TIM8_UP_IRQn, TIMER_INTERRUPT_PRIORITY, 0);
+		HAL_NVIC_EnableIRQ(TIM8_UP_IRQn);
+		_hRes->handle.Instance = TIM8;
+		TimerClock = HAL_RCC_GetPCLK2Freq();
+	} else if (_hRes->timer == TIMER17) {
+		__HAL_RCC_TIM17_CLK_ENABLE();
+		HAL_NVIC_SetPriority(TIM1_TRG_COM_TIM17_IRQn, TIMER_INTERRUPT_PRIORITY, 0);
+		HAL_NVIC_EnableIRQ(TIM1_TRG_COM_TIM17_IRQn);
+		_hRes->handle.Instance = TIM17;
+		TimerClock = HAL_RCC_GetPCLK2Freq();
 	}
 
 	_hRes->handle.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -150,7 +155,6 @@ void Timer::ConfigureTimerPeripheral()
 	// Configure timer prescaler based on desired frequency
 	//   fCNT = (ARR+1) * fPERIOD
 	//   PSC = (fTIM / fCNT) - 1
-	uint32_t TimerClock = HAL_RCC_GetHCLKFreq(); // 2*HAL_RCC_GetPCLK2Freq();
 	_hRes->handle.Init.Prescaler = (TimerClock / _hRes->frequency) - 1;
 
 	if (_hRes->handle.Init.Prescaler > 0xFFFF) {
@@ -175,7 +179,6 @@ void Timer::ConfigureTimerPeripheral()
 	}
 
 	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-	sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
 	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
 	if (HAL_TIMEx_MasterConfigSynchronization(&_hRes->handle, &sMasterConfig) != HAL_OK)
 	{
@@ -265,7 +268,7 @@ float Timer::GetDeltaTime(uint32_t prevTimerValue)
 	return microsTime;
 }
 
-void Timer::RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)()) // note that the frequency should be a multiple of the configured timer count frequency
+void Timer::RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)(void * param), void * parameter) // note that the frequency should be a multiple of the configured timer count frequency
 {
 	if (!_hRes) return;
 
@@ -273,10 +276,12 @@ void Timer::RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)(
 	SetMaxValue(interruptValue);
 
 	_TimerCallbackSoft = TimerCallbackSoft;
-	xTaskCreate(Timer::CallbackThread, (char *)"Timer callback", 128, (void*) this, 3, &_hRes->callbackTaskHandle);
+	_TimerCallbackSoftParameter = parameter;
+	if (!_hRes->callbackTaskHandle)
+		xTaskCreate(Timer::CallbackThread, (char *)"Timer callback", 128, (void*)this, TIMER_SOFT_CALLBACK_PRIORITY, &_hRes->callbackTaskHandle);
 }
 
-void Timer::RegisterInterrupt(uint32_t frequency, void (*TimerCallback)()) // note that the frequency should be a multiple of the configured timer count frequency
+void Timer::RegisterInterrupt(uint32_t frequency, void (*TimerCallback)(void * param), void * parameter) // note that the frequency should be a multiple of the configured timer count frequency
 {
 	if (!_hRes) return;
 
@@ -284,6 +289,7 @@ void Timer::RegisterInterrupt(uint32_t frequency, void (*TimerCallback)()) // no
 	SetMaxValue(interruptValue);
 
 	_hRes->TimerCallback = TimerCallback;
+	_hRes->TimerCallbackParameter = parameter;
 }
 
 void Timer::RegisterInterrupt(uint32_t frequency, SemaphoreHandle_t semaphore)
@@ -305,7 +311,7 @@ void Timer::CallbackThread(void * pvParameters)
 		vTaskSuspend(NULL); // suspend current thread - this could also be replaced by semaphore-based waiting (flagging)
 
 		if (timer->_TimerCallbackSoft)
-			timer->_TimerCallbackSoft();
+			timer->_TimerCallbackSoft(timer->_TimerCallbackSoftParameter);
 	}
 }
 
@@ -328,7 +334,7 @@ void Timer::InterruptHandler(Timer::hardware_resource_t * timer)
 			}
 
 			if (timer->TimerCallback)
-				timer->TimerCallback();
+				timer->TimerCallback(timer->TimerCallbackParameter);
 
 			if (timer->callbackTaskHandle) {
 				portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(timer->callbackTaskHandle);
@@ -341,31 +347,31 @@ void Timer::InterruptHandler(Timer::hardware_resource_t * timer)
 void TIM6_DAC_IRQHandler(void)
 {
 	if (Timer::resTIMER6)
-		Timer::InterruptHandler(Timer::resTIMER6); //HAL_TIM_IRQHandler(&htim2);
+		Timer::InterruptHandler(Timer::resTIMER6); //HAL_TIM_IRQHandler(&htim6);
 	else
-		TIM6->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK); // clear all interrupts
+		TIM6->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK | TIM_FLAG_BREAK2 | TIM_FLAG_IDX | TIM_FLAG_DIR | TIM_FLAG_IERR | TIM_FLAG_TERR); // clear all interrupts
 }
 
 void TIM7_IRQHandler(void)
 {
 	if (Timer::resTIMER7)
-		Timer::InterruptHandler(Timer::resTIMER7); //HAL_TIM_IRQHandler(&htim2);
+		Timer::InterruptHandler(Timer::resTIMER7); //HAL_TIM_IRQHandler(&htim7);
 	else
-		TIM7->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK); // clear all interrupts
+		TIM7->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK | TIM_FLAG_BREAK2 | TIM_FLAG_IDX | TIM_FLAG_DIR | TIM_FLAG_IERR | TIM_FLAG_TERR); // clear all interrupts
 }
 
-void TIM8_BRK_TIM12_IRQHandler(void)
+void TIM8_UP_IRQHandler(void)
 {
-	if (Timer::resTIMER12)
-		Timer::InterruptHandler(Timer::resTIMER12); //HAL_TIM_IRQHandler(&htim2);
+	if (Timer::resTIMER8)
+		Timer::InterruptHandler(Timer::resTIMER8); //HAL_TIM_IRQHandler(&htim8);
 	else
-		TIM12->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK); // clear all interrupts
+		TIM8->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK | TIM_FLAG_BREAK2 | TIM_FLAG_IDX | TIM_FLAG_DIR | TIM_FLAG_IERR | TIM_FLAG_TERR); // clear all interrupts
 }
 
-void TIM8_UP_TIM13_IRQHandler(void)
+void TIM1_TRG_COM_TIM17_IRQHandler(void)
 {
-	if (Timer::resTIMER13)
-		Timer::InterruptHandler(Timer::resTIMER13); //HAL_TIM_IRQHandler(&htim2);
+	if (Timer::resTIMER17)
+		Timer::InterruptHandler(Timer::resTIMER17); //HAL_TIM_IRQHandler(&htim17);
 	else
-		TIM13->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK); // clear all interrupts
+		TIM17->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK | TIM_FLAG_BREAK2 | TIM_FLAG_IDX | TIM_FLAG_DIR | TIM_FLAG_IERR | TIM_FLAG_TERR); // clear all interrupts
 }

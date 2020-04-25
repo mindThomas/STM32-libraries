@@ -633,8 +633,10 @@ void UART::UART_IncomingDataInterrupt(UART * uart)
 
 	if (!uart->_rxAvailableOnIdle) {
 #ifdef USE_FREERTOS
-		if (uart->_RXcallback && uart->_callbackTaskHandle)
-			xTaskResumeFromISR(uart->_callbackTaskHandle);
+		if (uart->_RXcallback && uart->_callbackTaskHandle) {
+			portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(uart->_callbackTaskHandle);
+			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+		}
 
 		if (uart->_RXdataAvailable)
 		  xSemaphoreGiveFromISR( uart->_RXdataAvailable, &xHigherPriorityTaskWoken );
@@ -753,8 +755,10 @@ void UART::DMA_RX_Check(UART * uart)
 		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
 		if (uart->Available()) {
-			if (uart->_RXcallback && uart->_callbackTaskHandle)
-				xTaskResumeFromISR(uart->_callbackTaskHandle);
+			if (uart->_RXcallback && uart->_callbackTaskHandle) {
+				portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(uart->_callbackTaskHandle);
+				portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+			}
 
 			if (uart->_RXdataAvailable)
 				xSemaphoreGiveFromISR( uart->_RXdataAvailable, &xHigherPriorityTaskWoken );
@@ -976,8 +980,10 @@ void UART::UART_Interrupt(port_t port)
 			portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
 			if (uart->Available()) {
-				if (uart->_RXcallback && uart->_callbackTaskHandle)
-					xTaskResumeFromISR(uart->_callbackTaskHandle);
+				if (uart->_RXcallback && uart->_callbackTaskHandle) {
+					portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(uart->_callbackTaskHandle);
+					portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+				}
 
 				if (uart->_RXdataAvailable)
 					xSemaphoreGiveFromISR( uart->_RXdataAvailable, &xHigherPriorityTaskWoken );

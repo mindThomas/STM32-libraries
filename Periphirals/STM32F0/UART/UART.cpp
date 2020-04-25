@@ -439,8 +439,10 @@ void UART::UART_IncomingDataInterrupt(UART * uart)
 	uart->BufferPush(uart->rxByte); // push into local buffer
 
 #ifdef USE_FREERTOS
-	if (uart->_RXcallback && uart->_callbackTaskHandle)
-		xTaskResumeFromISR(uart->_callbackTaskHandle);
+	if (uart->_RXcallback && uart->_callbackTaskHandle) {
+		portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(uart->_callbackTaskHandle);
+		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+	}
 
   if (uart->_RXdataAvailable)
 	  xSemaphoreGiveFromISR( uart->_RXdataAvailable, &xHigherPriorityTaskWoken );
