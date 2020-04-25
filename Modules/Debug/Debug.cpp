@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -19,7 +19,11 @@
 #include "Debug.h"
 #include "cmsis_os.h"
 #ifdef DEBUG_PRINTF_ENABLED
-#include "LSPC.hpp"
+	#ifdef DEBUG_PRINTF_WITHOUT_LSPC
+		#include "UART.h"
+	#else
+		#include "LSPC.hpp"
+	#endif
 #endif
 #include "IO.h"
 
@@ -51,7 +55,7 @@ void Debug::AssignDebugCOM(void * com)
 
 #ifdef DEBUG_PRINTF_ENABLED
 	if (!com) {
-		ERROR("LSPC object does not exist");
+		ERROR("COM object does not exist");
 		return;
 	}
 #endif
@@ -68,13 +72,16 @@ void Debug::AssignDebugCOM(void * com)
 	vQueueAddToRegistry(debugHandle.mutex_, "Debug mutex");
 	xSemaphoreGive( debugHandle.mutex_ ); // give the semaphore the first time
 
+	#ifndef DEBUG_PRINTF_WITHOUT_LSPC
 	xTaskCreate( Debug::PackageGeneratorThread, (char *)"Debug transmitter", debugHandle.THREAD_STACK_SIZE, (void*) &debugHandle, debugHandle.THREAD_PRIORITY, &debugHandle._TaskHandle);
+	#endif
 #endif
 #endif
 }
 
 #ifdef DEBUG_PRINTF_ENABLED
 #ifdef USE_FREERTOS
+#ifndef DEBUG_PRINTF_WITHOUT_LSPC
 void Debug::PackageGeneratorThread(void * pvParameters)
 {
 	Debug * debug = (Debug *)pvParameters;
@@ -92,11 +99,25 @@ void Debug::PackageGeneratorThread(void * pvParameters)
 }
 #endif
 #endif
+#endif
 
 void Debug::Message(const char * msg)
 {
 #ifdef DEBUG_PRINTF_ENABLED
 	if (!debugHandle.com_) return;
+#ifdef DEBUG_PRINTF_WITHOUT_LSPC
+	#ifdef USE_FREERTOS
+	xSemaphoreTake( debugHandle.mutex_, ( TickType_t ) portMAX_DELAY ); // take debug mutex
+	#endif
+
+	uint8_t * msgPtr = (uint8_t *)msg;
+	uint16_t stringLength = strlen(msg);
+	if (!((UART*)debugHandle.com_)->Write(msgPtr, stringLength)) return;
+
+	#ifdef USE_FREERTOS
+	xSemaphoreGive( debugHandle.mutex_ ); // give hardware resource back
+	#endif
+#else
 	if (!((LSPC*)debugHandle.com_)->Connected()) return;
 
 	#ifdef USE_FREERTOS
@@ -127,9 +148,10 @@ void Debug::Message(const char * msg)
 		memcpy(&debugHandle.messageBuffer_[debugHandle.currentBufferLocation_], msg, stringLength);
 		debugHandle.currentBufferLocation_ += stringLength;
 	}
-	#if USE_FREERTOS
+	#ifdef USE_FREERTOS
 	xSemaphoreGive( debugHandle.mutex_ ); // give hardware resource back
 	#endif
+#endif
 #endif
 }
 
@@ -187,7 +209,9 @@ void Debug::printf( const char *msgFmt, ... )
 	va_list args;
 
 	if (!debugHandle.com_) return;
+#ifndef DEBUG_PRINTF_WITHOUT_LSPC
 	if (!((LSPC*)debugHandle.com_)->Connected()) return;
+#endif
 
 	va_start( args,  msgFmt );
 
