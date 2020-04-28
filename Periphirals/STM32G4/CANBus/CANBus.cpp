@@ -33,6 +33,7 @@ extern "C" __EXPORT void HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef 
 
 CANBus::CANBus()
 {
+	InitHardware();
 	InitPeripheral();
 	ConfigurePeripheral();
 }
@@ -221,8 +222,6 @@ void CANBus::ConfigurePeripheral()
 		ERROR("Failed configuring CAN RX/TX notification");
 	}
 
-
-
 	/* Configure and enable Tx Delay Compensation, required for BRS mode.
 	TdcOffset default recommended value: DataTimeSeg1 * DataPrescaler
 	TdcFilter default recommended value: 0 */
@@ -242,6 +241,19 @@ void CANBus::ConfigurePeripheral()
 	}
 
 	_hRes->configured = true;
+}
+
+void CANBus::InitHardware(void)
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = GPIO_PIN_11 | GPIO_PIN_14;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET); // Disable on-board CAN termination
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_RESET); // Disable CAN shutdown
 }
 
 bool CANBus::Transmit(uint32_t ID, uint8_t * Payload, uint8_t payloadLength)

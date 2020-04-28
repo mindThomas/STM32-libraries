@@ -62,6 +62,7 @@ class CANBus
 		void InitPeripheral();
 		void DeInitPeripheral();
 		void ConfigurePeripheral();
+		void InitHardware(void);
 
 		bool Transmit(uint32_t ID, uint8_t * Payload, uint8_t payloadLength);
 

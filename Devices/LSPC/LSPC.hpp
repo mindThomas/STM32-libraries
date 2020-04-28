@@ -169,6 +169,10 @@ private:
 
 } // namespace lspc
 
+#if defined(LSPC_USB)
 using LSPC = lspc::Socket<USBCDC>; // define whether to use USB or UART
+#elif defined(LSPC_UART)
+using LSPC = lspc::Socket<UART>; // define whether to use USB or UART
+#endif
 
 #endif // LSPC_TEMPLATED_HPP
