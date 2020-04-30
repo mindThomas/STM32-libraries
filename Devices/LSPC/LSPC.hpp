@@ -15,8 +15,8 @@
 
 #define LSPC_MAX_ASYNCHRONOUS_PACKAGE_SIZE			100  // bytes
 #define LSPC_MAXIMUM_PACKAGE_LENGTH					250
-#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH				100   // maximum 100 asynchronous packages in queue
-#define LSPC_RX_PROCESSING_THREAD_STACK_SIZE		1024
+#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH				50   // maximum 100 asynchronous packages in queue
+#define LSPC_RX_PROCESSING_THREAD_STACK_SIZE		512
 #define LSPC_TX_TRANSMITTER_THREAD_STACK_SIZE		512
 
 namespace lspc

@@ -29,11 +29,9 @@
 SyncedPWMADC * SyncedPWMADC::globalObject = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim);
-extern "C" __EXPORT void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 extern "C" __EXPORT void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
 
-SyncedPWMADC::SyncedPWMADC()
+SyncedPWMADC::SyncedPWMADC(uint32_t frequency, float maxDuty)
 {
 	if (globalObject) {
 		ERROR("Synced PWM/ADC object has already been created once");
@@ -42,11 +40,16 @@ SyncedPWMADC::SyncedPWMADC()
 	globalObject = this;
 
 	// Default settings
-	_PWM_frequency = 5000;
-	_PWM_maxValue = 1000;
-	_PWM_dutyCycle = 0.5;
-	_Direction = true;
-	_samplingInterval = 1; // sample every PWM period
+	timerSettingsNext.Frequency = frequency;
+	timerSettingsNext.DutyCycle = 0;
+	timerSettingsNext.Direction = true;
+	_PWM_maxDuty = maxDuty;
+	if (SAMPLE_IN_EVERY_PWM_CYCLE) {
+		_samplingInterval = 1; // sample every PWM period
+	} else {
+		_samplingInterval = 2; // sample every second PWM period (with SAMPLE_IN_EVERY_PWM_CYCLE=false, this is the fastest possible)
+	}
+	_samplingNumSamples = 1; // capture samples from one PWM period after every interval (hence every PWM period)
 	_DMA_ADC1_ongoing = false;
 	_DMA_ADC2_ongoing = false;
 	_TimerEnabled = false;
@@ -57,7 +60,8 @@ SyncedPWMADC::SyncedPWMADC()
 	InitOpAmps();
 	InitADCs(); // configures ADC in Current sense mode
 	InitDMAs();
-	InitTimer(); // configures PWM in Brake mode
+	InitTimer(frequency); // configures PWM in Brake mode
+	RecomputePredefinedCounts();
 
 	StartSampling();
 	StartPWM();
@@ -86,170 +90,92 @@ void SyncedPWMADC::SetOperatingMode(OperatingMode_t mode)
 	}
 	else if (_OperatingMode == COAST) {
 		ADC_ConfigureBackEMFSampling();
-		Timer_ConfigureCoastMode();
+		Timer_ConfigureCoastMode(timerSettingsCurrent.Direction);
 	}
 }
 
 void SyncedPWMADC::SetPWMFrequency(uint32_t frequency)
 {
-	_PWM_frequency = frequency;
+	Timer_Configure(frequency);
+	RecomputePredefinedCounts(); // recompute at different frequency
 }
 
 void SyncedPWMADC::SetDutyCycle(float duty)
 {
-	_PWM_dutyCycle = duty;
+	timerSettingsNext.DutyCycle = duty;
 
-	if (_PWM_dutyCycle > 1.f)
-		_PWM_dutyCycle = 1.0f;
-	else if (_PWM_dutyCycle < -1.f)
-		_PWM_dutyCycle = -1.0f;
+	if (timerSettingsNext.DutyCycle > _PWM_maxDuty)
+		timerSettingsNext.DutyCycle = _PWM_maxDuty;
+	else if (timerSettingsNext.DutyCycle < -_PWM_maxDuty)
+		timerSettingsNext.DutyCycle = -_PWM_maxDuty;
 
-	if (_PWM_dutyCycle > 0)
-		_Direction = true;
-	else if (_PWM_dutyCycle < 0)
-		_Direction = false;
+	if (timerSettingsNext.DutyCycle > 0)
+		timerSettingsNext.Direction = true;
+	else if (timerSettingsNext.DutyCycle < 0)
+		timerSettingsNext.Direction = false;
 }
 
-
-void SyncedPWMADC::SetTimerFrequencyWith50pctDutyCycle(uint32_t freq, bool direction)
+void SyncedPWMADC::RecomputePredefinedCounts()
 {
-	const uint32_t PCLK = HAL_RCC_GetPCLK2Freq();
-	const uint16_t ADC_SAMPLE_TIME_US = _ADC_SampleTime_Total_us + ADC_SAMPLE_TIME_OVERHEAD_US;
+	const uint32_t ADC_SAMPLE_TIME_US = _ADC_SampleTime_Total_us + ADC_SAMPLE_TIME_OVERHEAD_US;
+	const uint16_t PWM_RIPPLE_TIME_US = ADC_PWM_RIPPLE_TIME_US;
 
-	uint32_t ARR = (PCLK / (uint32_t)(freq*_PWM_prescaler)) - 1;
-	__HAL_TIM_SET_AUTORELOAD(&hTimer, ARR);
+	// Duty cycle is defined as:
+	// Duty Cycle = (CCR+1) / (ARR+1)
+	// So 100% duty cycle is achieved by setting CCR=ARR
+	// Note that CCR is the Capture Compare Register value, computed as
+	// CCR = (Duty * (ARR+1)) - 1
+	PredefinedCounts.End = hTimer.Init.Period + 1; // ARR+1
 
-	// Recompute actual frequency
-	_PWM_frequency = PCLK / ((ARR+1) * _PWM_prescaler);
+	// Sample_DutyPct = ADC_SAMPLE_TIME_US*1e-6 / (1/PWM_frequency)
+	float Sample_DutyPct = (float)((uint32_t)(timerSettingsNext.Frequency) * ADC_SAMPLE_TIME_US) / 1000000.f;
+	PredefinedCounts.Sample = (uint16_t)(ceilf( fabsf(Sample_DutyPct)*PredefinedCounts.End ));
 
-	_Direction = direction;
-	if (direction)
-		_PWM_dutyCycle = 0.5;
-	else
-		_PWM_dutyCycle = -0.5;
+	float Ripple_DutyPct = (float)((uint32_t)(timerSettingsNext.Frequency) * PWM_RIPPLE_TIME_US) / 1000000.f;
+	PredefinedCounts.Ripple = (uint16_t)(ceilf( fabsf(Ripple_DutyPct)*PredefinedCounts.End ));
+}
 
-	uint16_t END = ARR + 1;
-	uint16_t CENTER = END / 2;
-	uint16_t ADCsampleCnt = (END*_PWM_frequency) / (1000000 / ADC_SAMPLE_TIME_US); // convert ADC sample time (ADC_SAMPLE_TIME_US) to percentage of PWM frequency (freq) and multiply with timer count (END)
+void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
+{
+	timerSettingsNext.DutyCycle = dutyPct;
+
+	if (timerSettingsNext.DutyCycle > _PWM_maxDuty)
+		timerSettingsNext.DutyCycle = _PWM_maxDuty;
+	else if (timerSettingsNext.DutyCycle < -_PWM_maxDuty)
+		timerSettingsNext.DutyCycle = -_PWM_maxDuty;
+
+	if (timerSettingsNext.DutyCycle > 0)
+		timerSettingsNext.Direction = true;
+	else if (timerSettingsNext.DutyCycle < 0)
+		timerSettingsNext.Direction = false;
+
+	const uint16_t& End_Count = PredefinedCounts.End;
+	const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
+	const uint16_t& Sample_Count = PredefinedCounts.Sample;
+	// Duty cycle is defined as:
+	// Duty Cycle = (CCR+1) / (ARR+1)
+	// So 100% duty cycle is achieved by setting CCR=ARR
+	const uint16_t Duty_Count = (uint16_t)(roundf( fabsf(timerSettingsNext.DutyCycle)*End_Count )); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+	// Sanity check
+	if (End_Count <= Sample_Count) {
+		ERROR("PWM frequency is too fast for ADC sampling at the configured ADC sample time");
+	}
+	if (End_Count <= Ripple_Count) {
+		ERROR("PWM frequency is faster than the expected ripple");
+	}
 
 	// Put the sample location as close to the end as possible
-	uint16_t sampleLocation1 = CENTER - ADCsampleCnt;
-	uint16_t sampleLocation2 = END - ADCsampleCnt;
-
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, sampleLocation2);
-
-	if (DEBUG_MODE_ENABLED) {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, sampleLocation1);
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
-	}
-
-	if (_PWM_dutyCycle > 0) {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0);
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, CENTER);
-	} else {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, CENTER);
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0);
-	}
-
-	if (_OperatingMode == COAST) {
-		SetCoastModeTimerConfiguration(_Direction);
-	}
-}
-
-void SyncedPWMADC::SetTimerFrequencyAndDutyCycle_MiddleSampling(uint32_t freq, float dutyPct)
-{
-	const uint32_t PCLK = HAL_RCC_GetPCLK2Freq();
-	const uint16_t ADC_SAMPLE_TIME_US = _ADC_SampleTime_Total_us + ADC_SAMPLE_TIME_OVERHEAD_US;
-
-	uint32_t ARR = (PCLK / (uint32_t)(freq*_PWM_prescaler)) - 1;
-	__HAL_TIM_SET_AUTORELOAD(&hTimer, ARR);
-
-	// Recompute actual frequency
-	_PWM_frequency = PCLK / ((ARR+1) * _PWM_prescaler);
-	_PWM_dutyCycle = dutyPct;
-	if (_PWM_dutyCycle > 1.f)
-		_PWM_dutyCycle = 1.0f;
-	else if (_PWM_dutyCycle < -1.f)
-		_PWM_dutyCycle = -1.0f;
-
-	if (_PWM_dutyCycle > 0)
-		_Direction = true;
-	else if (_PWM_dutyCycle < 0)
-		_Direction = false;
-
-	uint16_t END = ARR - 1; // minus one to fix problem with 100% duty cycle issue (should have been +1)
-	uint16_t CENTER = roundf((float)END * fabsf(_PWM_dutyCycle));
-	uint16_t ADCsampleCnt = (END*_PWM_frequency) / (1000000 / ADC_SAMPLE_TIME_US); // convert ADC sample time (ADC_SAMPLE_TIME_US) to percentage of PWM frequency (freq) and multiply with timer count (END)
-
-	uint16_t sampleLocation1 = 1;
+	uint16_t sampleLocation1 = 0;
 	uint16_t sampleLocation2 = 0;
 
-	if (ADCsampleCnt < CENTER/2) {
-		sampleLocation1 = CENTER/2 - ADCsampleCnt; // sample location - at the midpoint of the ON-period minus the sample duration
-	} // else sampleLocation1 = 1;
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
-
-	if (((END - CENTER) / 2 + CENTER - ADCsampleCnt) > (sampleLocation1 + ADCsampleCnt)) {
-		sampleLocation2 = (END - CENTER) / 2 + CENTER - ADCsampleCnt;  // sample location - at the midpoint of the OFF-period minus the sample duration
+	// Find mid-point in ON period without LOW-to-HIGH switching ripple
+	if ((Duty_Count+Ripple_Count)/2 > (Ripple_Count+Sample_Count)) {
+		sampleLocation1 = (Duty_Count+Ripple_Count)/2 - Sample_Count;
 	}
-	else if ((END - ADCsampleCnt) > (sampleLocation1 + ADCsampleCnt)) {
-		sampleLocation2 = (END - ADCsampleCnt);
-	} // else sampleLocation2 = 0; // disabled
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, sampleLocation2); // sample location - at the midpoint of the OFF-period minus the sample duration
-
-	if (DEBUG_MODE_ENABLED) {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, sampleLocation1);
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2); // sample location - at the midpoint of the OFF-period minus the sample duration
-	}
-
-	if (_PWM_dutyCycle > 0) {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, CENTER); // control the duty cycle with the other side of the motor
-	} else {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, CENTER); // control the duty cycle with the other side of the motor
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
-	}
-
-	if (_OperatingMode == COAST) {
-		SetCoastModeTimerConfiguration(_Direction);
-	}
-}
-
-void SyncedPWMADC::SetTimerFrequencyAndDutyCycle_EndSampling(uint32_t freq, float dutyPct)
-{
-	const uint32_t PCLK = HAL_RCC_GetPCLK2Freq();
-	const uint16_t ADC_SAMPLE_TIME_US = _ADC_SampleTime_Total_us + ADC_SAMPLE_TIME_OVERHEAD_US;
-
-	uint32_t ARR = (PCLK / (uint32_t)(freq*_PWM_prescaler)) - 1;
-	__HAL_TIM_SET_AUTORELOAD(&hTimer, ARR);
-
-	// Recompute actual frequency
-	_PWM_frequency = PCLK / ((ARR+1) * _PWM_prescaler);
-	_PWM_dutyCycle = dutyPct;
-	if (_PWM_dutyCycle > 1.f)
-		_PWM_dutyCycle = 1.0f;
-	else if (_PWM_dutyCycle < -1.f)
-		_PWM_dutyCycle = -1.0f;
-
-	if (_PWM_dutyCycle > 0)
-		_Direction = true;
-	else if (_PWM_dutyCycle < 0)
-		_Direction = false;
-
-	uint16_t END = ARR - 1; // minus one to fix problem with 100% duty cycle issue (should have been +1)
-	uint16_t CENTER = roundf((float)END * fabsf(_PWM_dutyCycle));
-	uint16_t ADCsampleCnt = (END*_PWM_frequency) / (1000000 / ADC_SAMPLE_TIME_US); // convert ADC sample time (ADC_SAMPLE_TIME_US) to percentage of PWM frequency (freq) and multiply with timer count (END)
-
-	// Put the sample location as close to the end as possible
-	uint16_t sampleLocation1 = 1;
-	uint16_t sampleLocation2 = 0;
-
-	if (CENTER > ADCsampleCnt) {
-		sampleLocation1 = CENTER - ADCsampleCnt;
-	}
-	if (END > ADCsampleCnt) {
-		sampleLocation2 = END - ADCsampleCnt;
+	// Find mid-point in OFF period without HIGH-to-LOW switching ripple
+	if (((End_Count+Duty_Count+Ripple_Count)/2 - Sample_Count) > (Duty_Count+Ripple_Count)) {
+		sampleLocation2 = (End_Count+Duty_Count+Ripple_Count)/2 - Sample_Count;
 	}
 
 	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
@@ -260,99 +186,215 @@ void SyncedPWMADC::SetTimerFrequencyAndDutyCycle_EndSampling(uint32_t freq, floa
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
 	}
 
-	if (_PWM_dutyCycle > 0) {
+	if (timerSettingsNext.DutyCycle > 0) {
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, CENTER); // control the duty cycle with the other side of the motor
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
 	} else {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, CENTER); // control the duty cycle with the other side of the motor
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count); // control the duty cycle with the other side of the motor
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 	}
 
 	if (_OperatingMode == COAST) {
-		SetCoastModeTimerConfiguration(_Direction);
+		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
+
+	timerSettingsNext.Triggers.numEnabledTriggers = 0;
+	if (sampleLocation1 > 0) {
+		timerSettingsNext.Triggers.ON.Enabled = true;
+		timerSettingsNext.Triggers.ON.Index = 0;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.ON.Enabled = false;
+	}
+	if (sampleLocation2 > 0) {
+		timerSettingsNext.Triggers.OFF.Enabled = true;
+		timerSettingsNext.Triggers.OFF.Index = timerSettingsNext.Triggers.numEnabledTriggers;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.OFF.Enabled = false;
+	}
+	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
+	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
 }
 
-void SyncedPWMADC::SetTimerFrequencyAndDutyCycle_MiddleSamplingOnce(uint32_t freq, float dutyPct)
+void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
 {
-	const uint32_t PCLK = HAL_RCC_GetPCLK2Freq();
-	const uint16_t ADC_SAMPLE_TIME_US = _ADC_SampleTime_Total_us + ADC_SAMPLE_TIME_OVERHEAD_US;
+	timerSettingsNext.DutyCycle = dutyPct;
 
-	uint32_t ARR = (PCLK / (uint32_t)(freq*_PWM_prescaler)) - 1;
-	__HAL_TIM_SET_AUTORELOAD(&hTimer, ARR);
+	if (timerSettingsNext.DutyCycle > _PWM_maxDuty)
+		timerSettingsNext.DutyCycle = _PWM_maxDuty;
+	else if (timerSettingsNext.DutyCycle < -_PWM_maxDuty)
+		timerSettingsNext.DutyCycle = -_PWM_maxDuty;
 
-	// Recompute actual frequency
-	_PWM_frequency = PCLK / ((ARR+1) * _PWM_prescaler);
-	_PWM_dutyCycle = dutyPct;
-	if (_PWM_dutyCycle > 1.f)
-		_PWM_dutyCycle = 1.0f;
-	else if (_PWM_dutyCycle < -1.f)
-		_PWM_dutyCycle = -1.0f;
+	if (timerSettingsNext.DutyCycle > 0)
+		timerSettingsNext.Direction = true;
+	else if (timerSettingsNext.DutyCycle < 0)
+		timerSettingsNext.Direction = false;
 
-	if (_PWM_dutyCycle > 0)
-		_Direction = true;
-	else if (_PWM_dutyCycle < 0)
-		_Direction = false;
+	const uint16_t& End_Count = PredefinedCounts.End;
+	const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
+	const uint16_t& Sample_Count = PredefinedCounts.Sample;
+	// Duty cycle is defined as:
+	// Duty Cycle = (CCR+1) / (ARR+1)
+	// So 100% duty cycle is achieved by setting CCR=ARR
+	const uint16_t Duty_Count = (uint16_t)(roundf( fabsf(timerSettingsNext.DutyCycle)*End_Count )); // note that from testing I have identified that it is more accurate not to subtract -1 here
 
-	uint16_t END = ARR - 1; // minus one to fix problem with 100% duty cycle issue (should have been +1)
-	uint16_t CENTER = roundf((float)END * fabsf(_PWM_dutyCycle));
-	uint16_t ADCsampleCnt = (END*_PWM_frequency) / (1000000 / ADC_SAMPLE_TIME_US); // convert ADC sample time (ADC_SAMPLE_TIME_US) to percentage of PWM frequency (freq) and multiply with timer count (END)
-
-	uint16_t sampleLocation = 1;
-
-	if (dutyPct > 0.5) {
-		sampleLocation = CENTER/2 - ADCsampleCnt; // sample location - at the midpoint of the ON-period minus the sample duration
-	} else {
-		sampleLocation = (END - CENTER) / 2 + CENTER - ADCsampleCnt;  // sample location - at the midpoint of the OFF-period minus the sample duration
+	// Sanity check
+	if (End_Count <= Sample_Count) {
+		ERROR("PWM frequency is too fast for ADC sampling at the configured ADC sample time");
+	}
+	if (End_Count <= Ripple_Count) {
+		ERROR("PWM frequency is faster than the expected ripple");
 	}
 
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation);
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, 0); // Only sample once
+	// Put the sample location as close to the end as possible
+	uint16_t sampleLocation1 = 0;
+	uint16_t sampleLocation2 = 0;
+
+	if (Duty_Count > (Ripple_Count+Sample_Count)) {
+		sampleLocation1 = Duty_Count - Sample_Count;
+	}
+	if ((End_Count - Sample_Count) > (Duty_Count+Ripple_Count)) {
+		sampleLocation2 = End_Count - Sample_Count;
+	}
+
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, sampleLocation2);
 
 	if (DEBUG_MODE_ENABLED) {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, sampleLocation);
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, 0); // Only sample once
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, sampleLocation1);
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
 	}
 
-	if (_PWM_dutyCycle > 0) {
+	if (timerSettingsNext.DutyCycle > 0) {
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, CENTER); // control the duty cycle with the other side of the motor
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
 	} else {
-		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, CENTER); // control the duty cycle with the other side of the motor
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count); // control the duty cycle with the other side of the motor
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 	}
 
 	if (_OperatingMode == COAST) {
-		SetCoastModeTimerConfiguration(_Direction);
+		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
+
+	timerSettingsNext.Triggers.numEnabledTriggers = 0;
+	if (sampleLocation1 > 0) {
+		timerSettingsNext.Triggers.ON.Enabled = true;
+		timerSettingsNext.Triggers.ON.Index = 0;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.ON.Enabled = false;
+	}
+	if (sampleLocation2 > 0) {
+		timerSettingsNext.Triggers.OFF.Enabled = true;
+		timerSettingsNext.Triggers.OFF.Index = timerSettingsNext.Triggers.numEnabledTriggers;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.OFF.Enabled = false;
+	}
+	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
+	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
 }
 
-// ToDo: OBS! It's a very bad idea to put these callbacks in here.
-// Consider to enable callback registration mechanism within HAL library or to handle the interrupt manually.
-// Capture-Compare interrupt - used for debugging purposes
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
+
+void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
 {
-	if (SyncedPWMADC::globalObject && htim->Instance == TIM1) {
-		SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC::globalObject);
+	timerSettingsNext.DutyCycle = dutyPct;
+
+	if (timerSettingsNext.DutyCycle > _PWM_maxDuty)
+		timerSettingsNext.DutyCycle = _PWM_maxDuty;
+	else if (timerSettingsNext.DutyCycle < -_PWM_maxDuty)
+		timerSettingsNext.DutyCycle = -_PWM_maxDuty;
+
+	if (timerSettingsNext.DutyCycle > 0)
+		timerSettingsNext.Direction = true;
+	else if (timerSettingsNext.DutyCycle < 0)
+		timerSettingsNext.Direction = false;
+
+	const uint16_t& End_Count = PredefinedCounts.End;
+	const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
+	const uint16_t& Sample_Count = PredefinedCounts.Sample;
+	// Duty cycle is defined as:
+	// Duty Cycle = (CCR+1) / (ARR+1)
+	// So 100% duty cycle is achieved by setting CCR=ARR
+	const uint16_t Duty_Count = (uint16_t)(roundf( fabsf(timerSettingsNext.DutyCycle)*End_Count )); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+	// Sanity check
+	if (End_Count <= Sample_Count) {
+		ERROR("PWM frequency is too fast for ADC sampling at the configured ADC sample time");
 	}
+	if (End_Count <= Ripple_Count) {
+		ERROR("PWM frequency is faster than the expected ripple");
+	}
+
+	// Put the sample location as close to the end as possible
+	uint16_t sampleLocation1 = 0;
+	uint16_t sampleLocation2 = 0;
+
+	// Find mid-point in ON period without LOW-to-HIGH switching ripple
+	if ((Duty_Count+Ripple_Count)/2 > (Ripple_Count+Sample_Count)) {
+		sampleLocation1 = (Duty_Count+Ripple_Count)/2 - Sample_Count;
+	}
+	// Find mid-point in OFF period without HIGH-to-LOW switching ripple
+	if (((End_Count+Duty_Count+Ripple_Count)/2 - Sample_Count) > (Duty_Count+Ripple_Count)) {
+		sampleLocation2 = (End_Count+Duty_Count+Ripple_Count)/2 - Sample_Count;
+	}
+
+	// Sample EITHER in the middle of the ON-period or in the middle of the OFF-period
+	if (timerSettingsNext.DutyCycle >= 0.5 && sampleLocation1 > 0) {
+		sampleLocation2 = 0; // since the ON-period is longest, remove sampling from the OFF-period
+	} else {
+		sampleLocation1 = 0; // since the OFF-period is longest, remove sampling from the ON-period
+	}
+
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, sampleLocation2);
+
+	if (DEBUG_MODE_ENABLED) {
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, sampleLocation1);
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
+	}
+
+	if (timerSettingsNext.DutyCycle > 0) {
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
+	} else {
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count); // control the duty cycle with the other side of the motor
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+	}
+
+	if (_OperatingMode == COAST) {
+		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
+	}
+
+	timerSettingsNext.Triggers.numEnabledTriggers = 0;
+	if (sampleLocation1 > 0) {
+		timerSettingsNext.Triggers.ON.Enabled = true;
+		timerSettingsNext.Triggers.ON.Index = 0;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.ON.Enabled = false;
+	}
+	if (sampleLocation2 > 0) {
+		timerSettingsNext.Triggers.OFF.Enabled = true;
+		timerSettingsNext.Triggers.OFF.Index = timerSettingsNext.Triggers.numEnabledTriggers;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.OFF.Enabled = false;
+	}
+	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
+	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
 }
 
 void SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC * obj)
 {
-	if (!obj) return;
+	//if (!obj) return; // currently commented out for speed
 
-	if (obj->DEBUG_MODE_ENABLED && obj->samplingPin) {
+	if (obj->samplingPin) {
 		if (obj->SAMPLE_IN_EVERY_PWM_CYCLE || obj->_DMA_ADC1_ongoing || obj->_DMA_ADC2_ongoing) {
 			obj->samplingPin->High();
 		}
-	}
-}
-
-// Update interrupt - used to trigger DMA if SAMPLING_INTERVAL > 1
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-	if (SyncedPWMADC::globalObject && htim->Instance == TIM1) {
-		SyncedPWMADC::TriggerSample(SyncedPWMADC::globalObject);
 	}
 }
 
@@ -367,12 +409,15 @@ void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 	if (obj->_DMA_ADC1_ongoing || obj->_DMA_ADC2_ongoing) return; // Previous conversion not finished yet
 	if (obj->hDMA_ADC1.State != HAL_DMA_STATE_READY || obj->hDMA_ADC2.State != HAL_DMA_STATE_READY) return;
 
+	// Latch timer settings since we now start the next period
+	obj->timerSettingsCurrent = obj->timerSettingsNext;
+
 	/* Start/Trigger the ADC1 DMA */
 	if (obj->hDMA_ADC1.State != HAL_DMA_STATE_READY) {
 		HAL_DMA_Abort(&obj->hDMA_ADC1);
 	}
 	__HAL_ADC_CLEAR_FLAG(&obj->hADC1, (ADC_FLAG_EOC | ADC_FLAG_EOS | ADC_FLAG_OVR));
-	HAL_DMA_Start_IT(&obj->hDMA_ADC1, (uint32_t)&obj->hADC1.Instance->DR, (uint32_t)&obj->_ADC1_buffer[0], ADC_DMA_HALFWORD_BUFFER_SIZE);
+	HAL_DMA_Start_IT(&obj->hDMA_ADC1, (uint32_t)&obj->hADC1.Instance->DR, (uint32_t)&obj->_ADC1_buffer[0], obj->_samplingNumSamples*obj->timerSettingsCurrent.Triggers.numEnabledTriggers*obj->Channels.ADCnumChannels[0]);
 	LL_ADC_REG_StartConversion(obj->hADC1.Instance);
 	obj->_DMA_ADC1_ongoing = 1;
 
@@ -381,7 +426,7 @@ void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 		HAL_DMA_Abort(&obj->hDMA_ADC2);
 	}
 	__HAL_ADC_CLEAR_FLAG(&obj->hADC2, (ADC_FLAG_EOC | ADC_FLAG_EOS | ADC_FLAG_OVR));
-	HAL_DMA_Start_IT(&obj->hDMA_ADC2, (uint32_t)&obj->hADC2.Instance->DR, (uint32_t)&obj->_ADC2_buffer[0], ADC_DMA_HALFWORD_BUFFER_SIZE);
+	HAL_DMA_Start_IT(&obj->hDMA_ADC2, (uint32_t)&obj->hADC2.Instance->DR, (uint32_t)&obj->_ADC2_buffer[0], obj->_samplingNumSamples*obj->timerSettingsCurrent.Triggers.numEnabledTriggers*obj->Channels.ADCnumChannels[1]);
 	LL_ADC_REG_StartConversion(obj->hADC2.Instance);
 	obj->_DMA_ADC2_ongoing = 1;
 }
@@ -406,7 +451,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 {
 	if (!obj) return;
 
-	if (obj->DEBUG_MODE_ENABLED && obj->samplingPin) {
+	if (obj->samplingPin) {
 		obj->samplingPin->Low();
 	}
 
@@ -435,12 +480,14 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				buf = obj->_ADC2_buffer;
 				nc = obj->Channels.ADCnumChannels[1];
 			}
-			obj->Samples.Vref.ValueON = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index];
-			obj->Samples.Vref.ValueOFF = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + nc];
 			obj->Samples.Vref.Timestamp = HAL_GetHighResTick();
+			if (obj->timerSettingsCurrent.Triggers.ON.Enabled)
+				obj->Samples.Vref.ValueON = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc];
+			if (obj->timerSettingsCurrent.Triggers.OFF.Enabled)
+				obj->Samples.Vref.ValueOFF = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc];
 		}
 
-		if (obj->_Direction) { // Forward
+		if (obj->timerSettingsCurrent.Direction) { // Forward
 			// Current sense from VSENSE1 since CH1 is LOW at all times
 			if (obj->Channels.VSENSE1.ADC) {
 				if (obj->Channels.VSENSE1.ADC == 1) {
@@ -450,9 +497,11 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE1.Index] / 4096.f;
-				obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE1.Index + nc] / 4096.f;
 				obj->Samples.CurrentSense.Timestamp = HAL_GetHighResTick();
+				if (obj->timerSettingsCurrent.Triggers.ON.Enabled)
+					obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled)
+					obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
 			}
 		} else { // Backward
 			// Current sense from VSENSE3 since CH3 is LOW at all times
@@ -464,13 +513,15 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE3.Index] / 4096.f;
-				obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE3.Index + nc] / 4096.f;
 				obj->Samples.CurrentSense.Timestamp = HAL_GetHighResTick();
+				if (obj->timerSettingsCurrent.Triggers.ON.Enabled)
+					obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled)
+					obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
 			}
 		}
 
-		if (obj->_Direction) { // Forward
+		if (obj->timerSettingsCurrent.Direction) { // Forward
 			// In forward direction it is CH3,CH3N that changes.
 			// During COAST mode CH3N is forced to be LOW at all times, causing LOW PWM to deactivate the CH3,CH3N MOSFET
 			// Back-EMF should thus be sampled from OUT3 = BEMF3
@@ -482,12 +533,18 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				float v_bemf = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF3.Index] / 4096.f;
-				obj->Samples.Bemf.ValueON = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
-
-				v_bemf = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF3.Index + nc] / 4096.f;
-				obj->Samples.Bemf.ValueOFF = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
 				obj->Samples.Bemf.Timestamp = HAL_GetHighResTick();
+
+				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+					float v_bemf = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+					obj->Samples.Bemf.ValueON = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
+				}
+
+				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+					float v_bemf = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+					obj->Samples.Bemf.ValueOFF = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
+				}
+
 			}
 		} else { // Backward
 			// In backward direction it is CH1,CH1N that changes.
@@ -501,12 +558,17 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				float v_bemf = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF1.Index] / 4096.f;
-				obj->Samples.Bemf.ValueON = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
-
-				v_bemf = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF1.Index + nc] / 4096.f;
-				obj->Samples.Bemf.ValueOFF = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
 				obj->Samples.Bemf.Timestamp = HAL_GetHighResTick();
+
+				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+					float v_bemf = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+					obj->Samples.Bemf.ValueON = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
+				}
+
+				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+					float v_bemf = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+					obj->Samples.Bemf.ValueOFF = (v_bemf - 0.1f) * (2.2f+10.f)/2.2f + 0.1f;
+				}
 			}
 		}
 
@@ -519,15 +581,24 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				nc = obj->Channels.ADCnumChannels[1];
 			}
 
-			float v_vbus = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VBUS.Index] / 4096.f;
-			obj->Samples.Vbus.ValueON = v_vbus * (18.f+169.f)/18.f;
-
-			v_vbus = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VBUS.Index + nc] / 4096.f;
-			obj->Samples.Vbus.ValueOFF = v_vbus * (18.f+169.f)/18.f;
 			obj->Samples.Vbus.Timestamp = HAL_GetHighResTick();
+
+			if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+				float v_vbus = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+				obj->Samples.Vbus.ValueON = v_vbus * (18.f+169.f)/18.f;
+			}
+
+			if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+				float v_vbus = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+				obj->Samples.Vbus.ValueOFF = v_vbus * (18.f+169.f)/18.f;
+			}
 		}
 
-		nc = 0;
+		// Latch here instead of in TriggerSample function when we sample in every PWM cycle, since TriggerSample won't be called in that case
+		if (obj->SAMPLE_IN_EVERY_PWM_CYCLE) {
+			// Latch timer settings since we now start the next period
+			obj->timerSettingsCurrent = obj->timerSettingsNext;
+		}
 	}
 }
 
@@ -536,4 +607,24 @@ void SyncedPWMADC::Debug_SetSamplingPin(IO * pin)
 	if (DEBUG_MODE_ENABLED && pin) {
 		samplingPin = pin;
 	}
+}
+
+SyncedPWMADC::Sample SyncedPWMADC::GetCurrent()
+{
+	return Samples.CurrentSense;
+}
+
+SyncedPWMADC::Sample SyncedPWMADC::GetVin()
+{
+	return Samples.Vbus;
+}
+
+SyncedPWMADC::Sample SyncedPWMADC::GetBemf()
+{
+	return Samples.Bemf;
+}
+
+SyncedPWMADC::SampleSingle SyncedPWMADC::GetPotentiometer()
+{
+	return SampleSingle();
 }

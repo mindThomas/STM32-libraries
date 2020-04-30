@@ -123,7 +123,7 @@ void IO::ConfigurePin(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, bool isInput, boo
 
 	// Configure GPIO
 	GPIO_InitStruct.Pin = GPIO_Pin;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 	HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
 }
 
@@ -275,7 +275,7 @@ void IO::Set(bool state)
 	if (state)
 		_GPIO->BSRR = _pin;
 	else
-		_GPIO->BSRR = (uint32_t)_pin << 16U;
+		_GPIO->BRR = _pin;
 }
 
 void IO::High()
@@ -287,7 +287,7 @@ void IO::High()
 void IO::Low()
 {
 	if (!_GPIO || _isInput) return;
-	_GPIO->BSRR = (uint32_t)_pin << 16U;
+	_GPIO->BRR = _pin;
 }
 
 void IO::Toggle()

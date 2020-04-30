@@ -43,9 +43,10 @@
   #define ALIGN_32BYTES(buf) __align(32) buf
 #endif
 
-// When a DMA sampling is started/triggered it will fill up the buffer. Note that this should b
-// OBS. This should be a multiple of the number of channels sampled, otherwise it will overflow
-#define ADC_DMA_HALFWORD_BUFFER_SIZE 4
+// When a DMA sampling is started/triggered it will fill up the buffer.
+// Maximum number of ADC samples the DMA buffer can hold
+// _samplingNumSamples*NUM_CHANNELS*NUM_TRIGGERS <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE
+#define ADC_DMA_HALFWORD_MAX_BUFFER_SIZE 16
 
 
 class SyncedPWMADC
@@ -54,14 +55,15 @@ class SyncedPWMADC
 
 	private:
 		const uint16_t ADC_SAMPLE_TIME_OVERHEAD_US = 1; // add 1 us ADC sample overhead time on top of the pre-computed ADC sample+conversion time
+		const uint16_t ADC_PWM_RIPPLE_TIME_US = 8; // transient ripple from PWM level change - keep ADC sampling (whole ADC capture period) away from PWM level changes by at least this amount
 
 		// Debugging parameters
 		const bool DEBUG_MODE_ENABLED = true;
-		const bool ENABLE_DEBUG_OPAMP_OUTPUT = false; // OBS. Current sense sampling will only work properly when driving forward
-		const bool SAMPLE_IN_EVERY_PWM_CYCLE = false;
+		const bool ENABLE_DEBUG_OPAMP_OUTPUT = true; // OBS. Current sense sampling will only work properly when driving forward
+		const bool SAMPLE_IN_EVERY_PWM_CYCLE = false; // setting this to true effectively sets "_samplingInterval=1" and "_samplingInterval=1"
 
 	public:
-		SyncedPWMADC();
+		SyncedPWMADC(uint32_t frequency = 10000, float maxDuty = 0.98);
 		~SyncedPWMADC();
 
 	public:
@@ -69,28 +71,49 @@ class SyncedPWMADC
 			BRAKE,
 			COAST
 		} OperatingMode_t;
+		typedef struct {
+			uint32_t Timestamp{0}; // recent update timestamp
+			float ValueON{0.0f};
+			float ValueOFF{0.0f};
+		} Sample;
+		typedef struct {
+			uint32_t Timestamp{0}; // recent update timestamp
+			float Value{0.0f};
+		} SampleSingle;
 
 	private:
 		// PWM parameters
-		uint32_t _PWM_frequency; // Hz
-		uint32_t _PWM_prescaler;
-		uint16_t _PWM_maxValue;
-		float _PWM_dutyCycle;
-		bool _Direction; // Forward = true
+		//uint32_t _PWM_frequency; // Hz
+		//uint32_t _PWM_prescaler;
+		//float _PWM_dutyCycle;
+		//bool _Direction; // Forward = true
+		float _PWM_maxDuty;
 
 		// Sampling parameters
 		uint16_t _samplingInterval; // requires SAMPLE_IN_EVERY_PWM_CYCLE=false - number of PWM periods/cycles between each sample capture. If set to 1 it will sample in every PWM period.
+		uint16_t _samplingNumSamples; // number of PWM period samples to capture after each sampling interval
+									  // _samplingNumSamples <= _samplingInterval
 
 		// ADC samples
-		ALIGN_32BYTES (uint16_t _ADC1_buffer[ADC_DMA_HALFWORD_BUFFER_SIZE]){0}; // 32-bytes Alignement is needed for cache maintenance purpose
-		ALIGN_32BYTES (uint16_t _ADC2_buffer[ADC_DMA_HALFWORD_BUFFER_SIZE]){0}; // 32-bytes Alignement is needed for cache maintenance purpose
+		ALIGN_32BYTES (uint16_t _ADC1_buffer[ADC_DMA_HALFWORD_MAX_BUFFER_SIZE]){0}; // 32-bytes Alignement is needed for cache maintenance purpose
+		ALIGN_32BYTES (uint16_t _ADC2_buffer[ADC_DMA_HALFWORD_MAX_BUFFER_SIZE]){0}; // 32-bytes Alignement is needed for cache maintenance purpose
 
 		OperatingMode_t _OperatingMode{BRAKE};
 
 		typedef struct {
-			uint8_t ADC{0};
-			uint8_t Index{0}; // rank (when in the sequence is this channel sampled)
+			uint8_t ADC;
+			uint8_t Index; // rank (when in the sequence is this channel sampled)
 		} SampleLocation;
+		typedef struct {
+			bool Enabled;
+			uint8_t Index; // index in sample sequence of PWM period, e.g. ON-period has Index=0 and OFF-period has Index=1 (partly redundant since this can be inferred from SampleLocation, but makes it easier for lookup)
+			uint32_t Location; // timer count
+		} TriggerLocation;
+		typedef struct {
+			uint8_t numEnabledTriggers; // number of enabled triggers within each PWM period (normally there is 2 triggers pr. PWM period = ON- and OFF-trigger)
+			TriggerLocation ON;
+			TriggerLocation OFF;
+		} Triggers_t;
 		struct {
 			SampleLocation VSENSE1;
 			SampleLocation VSENSE2;
@@ -105,16 +128,27 @@ class SyncedPWMADC
 		} Channels;
 
 		typedef struct {
-			float ValueON{0.0f};
-			float ValueOFF{0.0f};
-			uint32_t Timestamp{0}; // recent update timestamp
-		} Sample;
+			uint32_t Frequency; // Hz
+			uint32_t Prescaler;
+			float DutyCycle;
+			bool Direction; // Forward = true
+			Triggers_t Triggers;
+		} TimerSettings_t;
+		TimerSettings_t timerSettingsCurrent;
+		TimerSettings_t timerSettingsNext;
+
 		struct {
 			Sample Vref;
 			Sample CurrentSense;
 			Sample Bemf;
 			Sample Vbus;
 		} Samples;
+
+		struct {
+			uint16_t End; // end count (ARR+1)
+			uint16_t Sample; // sample time in timer counts
+			uint16_t Ripple;
+		} PredefinedCounts;
 
 	public:
 		bool _DMA_ADC1_ongoing; // should be moved to private
@@ -125,10 +159,17 @@ class SyncedPWMADC
 		void SetPWMFrequency(uint32_t frequency);
 		void SetDutyCycle(float duty);
 
-		void SetTimerFrequencyWith50pctDutyCycle(uint32_t freq, bool direction); // Forward: direction = true
-		void SetTimerFrequencyAndDutyCycle_MiddleSampling(uint32_t freq, float dutyPct);
-		void SetTimerFrequencyAndDutyCycle_EndSampling(uint32_t freq, float dutyPct);
-		void SetTimerFrequencyAndDutyCycle_MiddleSamplingOnce(uint32_t freq, float dutyPct);
+		void SetDutyCycle_MiddleSampling(float dutyPct);
+		void SetDutyCycle_EndSampling(float dutyPct);
+		void SetDutyCycle_MiddleSamplingOnce(float dutyPct);
+
+		Sample GetCurrent();
+		Sample GetVin();
+		Sample GetBemf();
+		SampleSingle GetPotentiometer();
+
+	private:
+		void RecomputePredefinedCounts();
 
 	public:
 		static void TriggerSample(SyncedPWMADC * obj);

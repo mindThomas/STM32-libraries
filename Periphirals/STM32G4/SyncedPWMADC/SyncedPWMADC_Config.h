@@ -27,12 +27,11 @@
 		void ADC_ConfigureCurrentSenseSampling();
 		void ADC_ConfigureBackEMFSampling();
 
-		void InitTimer();
+		void InitTimer(uint32_t frequency);
 		void DeInitTimer();
 		void Timer_ConfigureBrakeMode();
-		void Timer_ConfigureCoastMode();
+		void Timer_ConfigureCoastMode(bool direction);
 		void TIM_CCxNChannelCmd(TIM_TypeDef *TIMx, uint32_t Channel, uint32_t ChannelNState);
-		void SetCoastModeTimerConfiguration(bool direction);
 
 		void InitADCs();
 		void DeInitADCs();
@@ -52,7 +51,7 @@
 
 		void StartPWM();
 		void StopPWM();
-		void Timer_Configure(uint32_t frequency, uint32_t maxValue);
+		void Timer_Configure(uint32_t frequency);
 
 		void SetConstantOutput(bool OnOff, bool direction);
 

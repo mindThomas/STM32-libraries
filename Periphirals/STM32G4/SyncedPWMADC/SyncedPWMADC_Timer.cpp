@@ -81,12 +81,12 @@ void SyncedPWMADC::DeInitDigitalPins()
 	HAL_GPIO_DeInit(GPIOA, GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_12);
 }
 
-void SyncedPWMADC::InitTimer()
+void SyncedPWMADC::InitTimer(uint32_t frequency)
 {
 	/* Peripheral clock enable */
 	__HAL_RCC_TIM1_CLK_ENABLE();
 
-	Timer_Configure(_PWM_frequency, _PWM_maxValue);
+	Timer_Configure(frequency);
 
 	TIM_ClockConfigTypeDef sClockSourceConfig = {0};
 	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
@@ -178,7 +178,7 @@ void SyncedPWMADC::InitTimer()
 	}
 
 	if (DEBUG_MODE_ENABLED) {
-		HAL_NVIC_SetPriority(TIM1_CC_IRQn, 0, 0);
+		HAL_NVIC_SetPriority(TIM1_CC_IRQn, 1, 0);
 		HAL_NVIC_EnableIRQ(TIM1_CC_IRQn);
 	}
 }
@@ -187,10 +187,9 @@ void SyncedPWMADC::InitTimer()
 // For frequency and duty cycle changes it is however recommended to use the according functions:
 //  - SetPWMFrequency(uint32_t frequency)
 //  - void SetDutyCycle(float duty)
-void SyncedPWMADC::Timer_Configure(uint32_t frequency, uint32_t maxValue)
+void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 {
-	_PWM_frequency = frequency;
-	_PWM_maxValue = maxValue;
+	timerSettingsNext.Frequency = frequency;
 
 	bool ShouldRestart = false;
 	if (_TimerEnabled) {
@@ -203,21 +202,37 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, uint32_t maxValue)
 	/* Configure the timer frequency */
 	hTimer.Instance = TIM1;
 	hTimer.Init.CounterMode = TIM_COUNTERMODE_UP; //TIM_COUNTERMODE_CENTERALIGNED1;
-	hTimer.Init.Period = _PWM_maxValue - 1; // this will allow duty cycles (CCR register) to go from 0 to maxValue, with maxValue giving 100% duty cycle (fully on)
 	hTimer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	hTimer.Init.RepetitionCounter = _samplingInterval - 1;
 	hTimer.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+
+	// Find PWM prescaler to yield the largest possible ARR while still keeping it within 16-bit
+	// Based on "A few useful formulas" from the STM32 Timer slides (PDF)
+	// fPWM = fTIM / ((ARR+1)*(PSC+1))
+
+	// Start with no prescaler: _PWM_prescaler = PSC+1 = 1
+	uint32_t ARR = 0x10000;
+	timerSettingsNext.Prescaler = 0;
+	while (ARR > 0xFFFF) {
+		timerSettingsNext.Prescaler++;
+		// Compute ARR and check value
+		ARR = TimerClock / (timerSettingsNext.Frequency * timerSettingsNext.Prescaler) - 1;
+	}
+	hTimer.Init.Period = ARR;
+	hTimer.Init.Prescaler = timerSettingsNext.Prescaler - 1;
 
 	// Configure timer prescaler based on desired frequency
 	//   fCNT = (ARR+1) * fPERIOD
 	//   PSC = (fTIM / fCNT) - 1
 	// Added prescaler computation as float such that rounding can happen
-	float prescaler = ((float)TimerClock / ((hTimer.Init.Period+1) * _PWM_frequency));
+	/*float prescaler = ((float)TimerClock / ((hTimer.Init.Period+1) * _PWM_frequency));
 	_PWM_prescaler = (uint32_t)roundf(prescaler);
 	hTimer.Init.Prescaler = _PWM_prescaler - 1;
+	hTimer.Init.Period = _PWM_maxValue - 1; // this will allow duty cycles (CCR register) to go from 0 to maxValue, with maxValue giving 100% duty cycle (fully on)
+	*/
 
 	// Recompute actual frequency
-	_PWM_frequency = TimerClock / ((hTimer.Init.Period+1) * _PWM_prescaler);
+	timerSettingsNext.Frequency = TimerClock / ((hTimer.Init.Period+1) * timerSettingsNext.Prescaler);
 
 	if (HAL_TIM_Base_Init(&hTimer) != HAL_OK)
 	{
@@ -264,12 +279,7 @@ void SyncedPWMADC::Timer_ConfigureBrakeMode()
 	TIM_CCxNChannelCmd(hTimer.Instance, TIM_CHANNEL_3, TIM_CCxN_ENABLE);
 }
 
-void SyncedPWMADC::Timer_ConfigureCoastMode()
-{
-	SetCoastModeTimerConfiguration(_Direction);
-}
-
-void SyncedPWMADC::SetCoastModeTimerConfiguration(bool direction)
+void SyncedPWMADC::Timer_ConfigureCoastMode(bool direction)
 {
 	if (direction) { // Forward
 		// In forward direction it is CH3,CH3N that changes.
@@ -358,7 +368,8 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 {
 	if (SAMPLE_IN_EVERY_PWM_CYCLE) return; // sampling interval is not supported when sampling in every PWM cycle
 
-	if (samplingInterval > 0) {
+	// In SAMPLE_IN_EVERY_PWM_CYCLE mode sample interval should at least be 2 PWM periods
+	if (samplingInterval >= 2) {
 		_samplingInterval = samplingInterval;
 		hTimer.Instance->RCR = _samplingInterval - 1;
 	}
@@ -381,6 +392,7 @@ void SyncedPWMADC::TIM_CCxNChannelCmd(TIM_TypeDef *TIMx, uint32_t Channel, uint3
 void SyncedPWMADC::StartPWM()
 {
 	_TimerEnabled = true;
+	timerSettingsCurrent = timerSettingsNext;
 
 	// Start PWM interface
     HAL_TIM_PWM_Start(&hTimer, TIM_CHANNEL_1);
@@ -423,14 +435,28 @@ void SyncedPWMADC::StopPWM()
 
 void TIM1_UP_TIM16_IRQHandler(void)
 {
-	// Used to trigger DMA if SAMPLING_INTERVAL > 1
-	if (SyncedPWMADC::globalObject)
-		HAL_TIM_IRQHandler(&SyncedPWMADC::globalObject->hTimer);
+	// Update interrupt - used to trigger DMA if SAMPLING_INTERVAL > 1
+	if (!SyncedPWMADC::globalObject) return;
+
+	/* TIM Update event */
+	if (__HAL_TIM_GET_FLAG(&SyncedPWMADC::globalObject->hTimer, TIM_FLAG_UPDATE) != RESET &&
+		__HAL_TIM_GET_IT_SOURCE(&SyncedPWMADC::globalObject->hTimer, TIM_IT_UPDATE) != RESET)
+	{
+		__HAL_TIM_CLEAR_IT(&SyncedPWMADC::globalObject->hTimer, TIM_IT_UPDATE);
+		SyncedPWMADC::TriggerSample(SyncedPWMADC::globalObject);
+	}
+	else {
+		// It must have been TIM16 who called this. Clear all interrupts to avoid deadlocks.
+		TIM16->SR = ~(uint32_t)(TIM_IT_UPDATE | TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4 | TIM_IT_COM | TIM_IT_TRIGGER | TIM_IT_BREAK); // clear all interrupts
+	}
 }
 
 void TIM1_CC_IRQHandler(void)
 {
 	// For debugging purposes
-	if (SyncedPWMADC::globalObject)
-		HAL_TIM_IRQHandler(&SyncedPWMADC::globalObject->hTimer);
+	if (!SyncedPWMADC::globalObject) return;
+
+	// Is only used for capture compare
+	__HAL_TIM_CLEAR_IT(&SyncedPWMADC::globalObject->hTimer, TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4);
+	SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC::globalObject);
 }

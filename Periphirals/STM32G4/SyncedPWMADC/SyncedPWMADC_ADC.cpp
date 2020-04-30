@@ -294,6 +294,15 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 	sConfig.Offset = 0;
 	memset(&Channels, 0, sizeof(Channels)); // reset Channels configuration
 
+	/* Set default Channel trigger configuration */
+	/* By default 2 triggers (ON- and OFF-period) is enabled */
+	timerSettingsNext.Triggers.numEnabledTriggers = 2;
+	timerSettingsNext.Triggers.ON.Enabled = true;
+	timerSettingsNext.Triggers.ON.Index = 0;
+	timerSettingsNext.Triggers.OFF.Enabled = true;
+	timerSettingsNext.Triggers.OFF.Index = 1;
+	timerSettingsCurrent = timerSettingsNext;
+
 	/* Define sample time */
 	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
 	float ADC_SampleTimeTotalCycles = 47.5 + 12.5; // Sampling cycles + Conversion cycles
@@ -384,12 +393,12 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 
 	if (Channels.ADCnumChannels[0] > Channels.ADCnumChannels[1]) {
 		_ADC_SampleTime_Total_us = Channels.ADCnumChannels[0] * ADC_SampleTime_SingleChannel_us;
-		if ((ADC_DMA_HALFWORD_BUFFER_SIZE % Channels.ADCnumChannels[0]) > 0) {
+		if ((ADC_DMA_HALFWORD_MAX_BUFFER_SIZE % Channels.ADCnumChannels[0]) > 0) {
 			ERROR("DMA buffer size is not a multiple of the number of channels to sample");
 		}
 	} else {
 		_ADC_SampleTime_Total_us = Channels.ADCnumChannels[1] * ADC_SampleTime_SingleChannel_us;
-		if ((ADC_DMA_HALFWORD_BUFFER_SIZE % Channels.ADCnumChannels[1]) > 0) {
+		if ((ADC_DMA_HALFWORD_MAX_BUFFER_SIZE % Channels.ADCnumChannels[1]) > 0) {
 			ERROR("DMA buffer size is not a multiple of the number of channels to sample");
 		}
 	}
@@ -431,6 +440,15 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
 	memset(&Channels, 0, sizeof(Channels)); // reset Channels configuration
+
+	/* Set default Channel trigger configuration */
+	/* By default 2 triggers (ON- and OFF-period) is enabled */
+	timerSettingsNext.Triggers.numEnabledTriggers = 2;
+	timerSettingsNext.Triggers.ON.Enabled = true;
+	timerSettingsNext.Triggers.ON.Index = 0;
+	timerSettingsNext.Triggers.OFF.Enabled = true;
+	timerSettingsNext.Triggers.OFF.Index = 1;
+	timerSettingsCurrent = timerSettingsNext;
 
 	/* Define sample time */
 	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
@@ -511,12 +529,12 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 
 	if (Channels.ADCnumChannels[0] > Channels.ADCnumChannels[1]) {
 		_ADC_SampleTime_Total_us = Channels.ADCnumChannels[0] * ADC_SampleTime_SingleChannel_us;
-		if ((ADC_DMA_HALFWORD_BUFFER_SIZE % Channels.ADCnumChannels[0]) > 0) {
+		if ((ADC_DMA_HALFWORD_MAX_BUFFER_SIZE % Channels.ADCnumChannels[0]) > 0) {
 			ERROR("DMA buffer size is not a multiple of the number of channels to sample");
 		}
 	} else {
 		_ADC_SampleTime_Total_us = Channels.ADCnumChannels[1] * ADC_SampleTime_SingleChannel_us;
-		if ((ADC_DMA_HALFWORD_BUFFER_SIZE % Channels.ADCnumChannels[1]) > 0) {
+		if ((ADC_DMA_HALFWORD_MAX_BUFFER_SIZE % Channels.ADCnumChannels[1]) > 0) {
 			ERROR("DMA buffer size is not a multiple of the number of channels to sample");
 		}
 	}
@@ -576,6 +594,8 @@ void SyncedPWMADC::InitDMAs()
     	hDMA_ADC1.Init.Mode = DMA_NORMAL; // wait for DMA to be started/triggered and the fill the buffer ONCE
     } else {
     	hDMA_ADC1.Init.Mode = DMA_CIRCULAR; // we want to sample at every PWM period, so it should just run continuously in a circular fashion
+    	_samplingInterval = 1;
+    	_samplingNumSamples = 1;
     }
 
     if (HAL_DMA_Init(&hDMA_ADC1) != HAL_OK)
@@ -600,6 +620,8 @@ void SyncedPWMADC::InitDMAs()
     	hDMA_ADC2.Init.Mode = DMA_NORMAL; // wait for DMA to be started/triggered and the fill the buffer ONCE
     } else {
     	hDMA_ADC2.Init.Mode = DMA_CIRCULAR; // we want to sample at every PWM period, so it should just run continuously in a circular fashion
+    	_samplingInterval = 1;
+    	_samplingNumSamples = 1;
     }
 
     if (HAL_DMA_Init(&hDMA_ADC2) != HAL_OK)
@@ -628,10 +650,13 @@ void SyncedPWMADC::StartSampling()
 {
 	_SamplingEnabled = true;
 
-    HAL_ADC_Start_DMA(&hADC1, (uint32_t*)_ADC1_buffer, ADC_DMA_HALFWORD_BUFFER_SIZE);
+    HAL_ADC_Start_DMA(&hADC1, (uint32_t*)_ADC1_buffer, _samplingNumSamples*timerSettingsCurrent.Triggers.numEnabledTriggers*Channels.ADCnumChannels[0]);
     __HAL_ADC_DISABLE_IT(&hADC1, ADC_IT_OVR); // disable Overrun interrupt since it will be triggered all the time during the "idle" period between DMA reads
-    HAL_ADC_Start_DMA(&hADC2, (uint32_t*)_ADC2_buffer, ADC_DMA_HALFWORD_BUFFER_SIZE);
+    _DMA_ADC1_ongoing = 1;
+
+    HAL_ADC_Start_DMA(&hADC2, (uint32_t*)_ADC2_buffer, _samplingNumSamples*timerSettingsCurrent.Triggers.numEnabledTriggers*Channels.ADCnumChannels[1]);
     __HAL_ADC_DISABLE_IT(&hADC2, ADC_IT_OVR); // disable Overrun interrupt since it will be triggered all the time during the "idle" period between DMA reads
+    _DMA_ADC2_ongoing = 1;
 }
 
 void SyncedPWMADC::StopSampling()
@@ -642,22 +667,23 @@ void SyncedPWMADC::StopSampling()
     HAL_ADC_Stop_DMA(&hADC2);
 }
 
-void DMA1_Channel1_IRQHandler(void)
-{
-	if (SyncedPWMADC::globalObject)
-		HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject->hDMA_ADC1);
-}
-
-void DMA1_Channel2_IRQHandler(void)
-{
-	if (SyncedPWMADC::globalObject)
-		HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject->hDMA_ADC2);
-}
-
+// Not used in DMA mode. So this interrupt would generally not be called
 void ADC1_2_IRQHandler(void)
 {
 	if (SyncedPWMADC::globalObject) {
 		  HAL_ADC_IRQHandler(&SyncedPWMADC::globalObject->hADC1);
 		  HAL_ADC_IRQHandler(&SyncedPWMADC::globalObject->hADC2);
 	}
+}
+
+void DMA1_Channel1_IRQHandler(void)
+{
+	if (SyncedPWMADC::globalObject)
+		HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject->hDMA_ADC1); // The HAL interrupt routine called here is fast, so it's OK to use it.
+}
+
+void DMA1_Channel2_IRQHandler(void)
+{
+	if (SyncedPWMADC::globalObject)
+		HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject->hDMA_ADC2); // The HAL interrupt routine called here is fast, so it's OK to use it.
 }
