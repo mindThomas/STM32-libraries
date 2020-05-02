@@ -154,10 +154,17 @@ class SyncedPWMADC
 		bool _DMA_ADC1_ongoing; // should be moved to private
 		bool _DMA_ADC2_ongoing; // should be moved to private
 
+	#ifdef USE_FREERTOS
+		SemaphoreHandle_t _sampleAvailable;
+	#else
+		bool _sampleAvailable;
+	#endif
+
 	public:
 		void SetOperatingMode(OperatingMode_t mode);
 		void SetPWMFrequency(uint32_t frequency);
 		void SetDutyCycle(float duty);
+		float GetCurrentDutyCycle();
 
 		void SetDutyCycle_MiddleSampling(float dutyPct);
 		void SetDutyCycle_EndSampling(float dutyPct);
@@ -168,7 +175,7 @@ class SyncedPWMADC
 		Sample GetBemf();
 		SampleSingle GetPotentiometer();
 
-		void Tone(uint32_t frequency, uint16_t onTime_ms, uint16_t offTime_ms);
+		void WaitForNewSample();
 
 	private:
 		void RecomputePredefinedCounts();

@@ -55,6 +55,17 @@ SyncedPWMADC::SyncedPWMADC(uint32_t frequency, float maxDuty)
 	_TimerEnabled = false;
 	_SamplingEnabled = false;
 
+#ifdef USE_FREERTOS
+	_sampleAvailable = xSemaphoreCreateBinary();
+	if (_sampleAvailable == NULL) {
+		ERROR("Could not create ADC-PWM Sample available semaphore");
+		return;
+	}
+	vQueueAddToRegistry(_sampleAvailable, "ADC-PWM Sample Available");
+#else
+	_sampleAvailable = false;
+#endif
+
 	ConfigureDigitalPins();
 	ConfigureAnalogPins();
 	InitOpAmps();
@@ -113,6 +124,11 @@ void SyncedPWMADC::SetDutyCycle(float duty)
 		timerSettingsNext.Direction = true;
 	else if (timerSettingsNext.DutyCycle < 0)
 		timerSettingsNext.Direction = false;
+}
+
+float SyncedPWMADC::GetCurrentDutyCycle()
+{
+	return timerSettingsCurrent.DutyCycle;
 }
 
 void SyncedPWMADC::RecomputePredefinedCounts()
@@ -634,6 +650,15 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 			// Latch timer settings since we now start the next period
 			obj->timerSettingsCurrent = obj->timerSettingsNext;
 		}
+
+#ifdef USE_FREERTOS
+		portBASE_TYPE xHigherPriorityTaskWoken;
+		if (obj->_sampleAvailable)
+			xSemaphoreGiveFromISR( obj->_sampleAvailable, &xHigherPriorityTaskWoken );
+		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#else
+		_sampleAvailable = true;
+#endif
 	}
 }
 
@@ -641,6 +666,16 @@ void SyncedPWMADC::Debug_SetSamplingPin(IO * pin)
 {
 	if (DEBUG_MODE_ENABLED && pin) {
 		samplingPin = pin;
+	}
+}
+
+void SyncedPWMADC::WaitForNewSample()
+{
+#ifdef USE_FREERTOS
+	xSemaphoreTake( _sampleAvailable, ( TickType_t ) portMAX_DELAY );
+#endif
+	while (!_sampleAvailable) {
+		osDelay(1);
 	}
 }
 
