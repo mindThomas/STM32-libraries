@@ -37,7 +37,7 @@
 class CANBus
 {
 	private:
-		const int CAN_RX_PROCESSING_THREAD_STACK_SIZE = 128;
+		const int CAN_RX_PROCESSING_THREAD_STACK_SIZE = configMINIMAL_STACK_SIZE;
 		const int CAN_RX_QUEUE_LENGTH = 3;
 		const uint16_t TX_TIMEOUT = 500; // milliseconds
 

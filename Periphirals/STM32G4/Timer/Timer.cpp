@@ -278,7 +278,7 @@ void Timer::RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)(
 	_TimerCallbackSoft = TimerCallbackSoft;
 	_TimerCallbackSoftParameter = parameter;
 	if (!_hRes->callbackTaskHandle)
-		xTaskCreate(Timer::CallbackThread, (char *)"Timer callback", 128, (void*)this, TIMER_SOFT_CALLBACK_PRIORITY, &_hRes->callbackTaskHandle);
+		xTaskCreate(Timer::CallbackThread, (char *)"Timer callback", configMINIMAL_STACK_SIZE, (void*)this, TIMER_SOFT_CALLBACK_PRIORITY, &_hRes->callbackTaskHandle);
 }
 
 void Timer::RegisterInterrupt(uint32_t frequency, void (*TimerCallback)(void * param), void * parameter) // note that the frequency should be a multiple of the configured timer count frequency

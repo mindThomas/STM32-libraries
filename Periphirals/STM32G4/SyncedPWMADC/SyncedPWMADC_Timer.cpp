@@ -72,6 +72,7 @@ void SyncedPWMADC::ConfigureDigitalPins()
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
     HAL_GPIO_WritePin(GPIOB, GPIO_InitStruct.Pin, GPIO_PIN_RESET);
+    timerSettingsNext.BemfHighRange = true;
 }
 
 void SyncedPWMADC::DeInitDigitalPins()
@@ -187,6 +188,8 @@ void SyncedPWMADC::InitTimer(uint32_t frequency)
 //  - void SetDutyCycle(float duty)
 void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 {
+	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+
 	timerSettingsNext.Frequency = frequency;
 
 	volatile uint32_t TimerClock = HAL_RCC_GetPCLK2Freq();
@@ -195,7 +198,7 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 	hTimer.Instance = TIM1;
 	hTimer.Init.CounterMode = TIM_COUNTERMODE_UP; //TIM_COUNTERMODE_CENTERALIGNED1;
 	hTimer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	hTimer.Init.RepetitionCounter = _samplingInterval - 1;
+	hTimer.Init.RepetitionCounter = 0;//timerSettingsNext.samplingInterval - 1;
 	hTimer.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE; // Enable preload to ensure that frequency changes will only be effectuated at the beginning of each PWM period
 
 	// Find PWM prescaler to yield the largest possible ARR while still keeping it within 16-bit
@@ -215,18 +218,30 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 	// Recompute actual frequency
 	timerSettingsNext.Frequency = TimerClock / ((hTimer.Init.Period+1) * timerSettingsNext.Prescaler);
 
-	if (HAL_TIM_Base_Init(&hTimer) != HAL_OK)
-	{
-		ERROR("Could not initialize PWM timer");
+	if (!_TimerEnabled) {
+		if (HAL_TIM_Base_Init(&hTimer) != HAL_OK)
+		{
+			ERROR("Could not initialize PWM timer");
+		}
+	} else {
+		// Duty cycle is defined as:
+		// Duty Cycle = (CCR+1) / (ARR+1)
+		// So 100% duty cycle is achieved by setting CCR=ARR
+		const uint16_t Duty_Count = (uint16_t)(roundf( fabsf(timerSettingsNext.DutyCycle)*(ARR+1) )); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+		if (timerSettingsNext.Direction) {
+			__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+			__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
+		} else {
+			__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count); // control the duty cycle with the other side of the motor
+			__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+		}
+
+		TIM_Base_SetConfig(hTimer.Instance, &hTimer.Init);
 	}
 
-	// Reset duty cycle values
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0);
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, 0);
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0);
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, 0);
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, 0);
-	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, 0);
+	timerSettingsNext.Changed = true;
+	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
 }
 
 
@@ -344,8 +359,15 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 
 	// In SAMPLE_IN_EVERY_PWM_CYCLE mode sample interval should at least be 2 PWM periods
 	if (samplingInterval >= 2) {
-		_samplingInterval = samplingInterval;
-		hTimer.Instance->RCR = _samplingInterval - 1;
+		xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+
+		timerSettingsNext.samplingInterval = samplingInterval;
+		hTimer.Instance->RCR = timerSettingsNext.samplingInterval - 1;
+
+		// The change is effective instantaneously
+		timerSettingsCurrent.samplingInterval = timerSettingsNext.samplingInterval;
+
+		xSemaphoreGive( _timerSettingsMutex ); // unlock settings
 	}
 }
 
@@ -366,6 +388,7 @@ void SyncedPWMADC::TIM_CCxNChannelCmd(TIM_TypeDef *TIMx, uint32_t Channel, uint3
 void SyncedPWMADC::StartPWM()
 {
 	_TimerEnabled = true;
+	timerSettingsNext.Changed = false;
 	timerSettingsCurrent = timerSettingsNext;
 
 	// Start PWM interface

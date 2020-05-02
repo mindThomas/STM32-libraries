@@ -27,6 +27,7 @@
 #include "stm32g4xx_hal_dma.h"
 
 #include "IO.h"
+#include "Encoder.h"
 #include <unordered_map>
 
 /* To Do
@@ -48,6 +49,8 @@
 // _samplingNumSamples*NUM_CHANNELS*NUM_TRIGGERS <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE
 #define ADC_DMA_HALFWORD_MAX_BUFFER_SIZE 16
 
+#define SAMPLE_QUEUE_SIZE	100
+
 
 class SyncedPWMADC
 {
@@ -59,7 +62,7 @@ class SyncedPWMADC
 
 		// Debugging parameters
 		const bool DEBUG_MODE_ENABLED = true;
-		const bool ENABLE_DEBUG_OPAMP_OUTPUT = true; // OBS. Current sense sampling will only work properly when driving forward
+		const bool ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT = false; // OBS. Current sense sampling will only work properly when driving forward
 		const bool SAMPLE_IN_EVERY_PWM_CYCLE = false; // setting this to true effectively sets "_samplingInterval=1" and "_samplingInterval=1"
 
 	public:
@@ -72,27 +75,25 @@ class SyncedPWMADC
 			COAST
 		} OperatingMode_t;
 		typedef struct {
+			bool UpdatedON{false};
+			bool UpdatedOFF{false};
 			uint32_t Timestamp{0}; // recent update timestamp
 			float ValueON{0.0f};
 			float ValueOFF{0.0f};
-		} Sample;
+		} SampleFloat;
 		typedef struct {
+			bool Updated{false};
 			uint32_t Timestamp{0}; // recent update timestamp
 			float Value{0.0f};
-		} SampleSingle;
+		} SampleSingleFloat;
+		typedef struct {
+			bool Updated{false};
+			uint32_t Timestamp{0}; // recent update timestamp
+			int32_t Value{0};
+		} SampleSingleInt32;
 
 	private:
-		// PWM parameters
-		//uint32_t _PWM_frequency; // Hz
-		//uint32_t _PWM_prescaler;
-		//float _PWM_dutyCycle;
-		//bool _Direction; // Forward = true
 		float _PWM_maxDuty;
-
-		// Sampling parameters
-		uint16_t _samplingInterval; // requires SAMPLE_IN_EVERY_PWM_CYCLE=false - number of PWM periods/cycles between each sample capture. If set to 1 it will sample in every PWM period.
-		uint16_t _samplingNumSamples; // number of PWM period samples to capture after each sampling interval
-									  // _samplingNumSamples <= _samplingInterval
 
 		// ADC samples
 		ALIGN_32BYTES (uint16_t _ADC1_buffer[ADC_DMA_HALFWORD_MAX_BUFFER_SIZE]){0}; // 32-bytes Alignement is needed for cache maintenance purpose
@@ -128,20 +129,34 @@ class SyncedPWMADC
 		} Channels;
 
 		typedef struct {
+			bool Changed;
 			uint32_t Frequency; // Hz
 			uint32_t Prescaler;
 			float DutyCycle;
 			bool Direction; // Forward = true
+			uint32_t TimerMax; // ARR+1
+			uint32_t DutyCycleLocation; // timer count
+			bool BemfHighRange; // high-range enabled = voltage-divider enabled
 			Triggers_t Triggers;
+
+			// Sampling parameters
+			uint16_t samplingInterval; // requires SAMPLE_IN_EVERY_PWM_CYCLE=false - number of PWM periods/cycles between each sample capture. If set to 1 it will sample in every PWM period.
+			uint16_t samplingNumSamples; // number of PWM period samples to capture after each sampling interval
+										  // samplingNumSamples <= samplingInterval
 		} TimerSettings_t;
+#ifdef USE_FREERTOS
+		SemaphoreHandle_t _timerSettingsMutex;
+#endif
+
 		TimerSettings_t timerSettingsCurrent;
 		TimerSettings_t timerSettingsNext;
 
 		struct {
-			Sample Vref;
-			Sample CurrentSense;
-			Sample Bemf;
-			Sample Vbus;
+			SampleFloat Vref;
+			SampleFloat CurrentSense;
+			SampleFloat Bemf;
+			SampleFloat Vbus;
+			SampleSingleInt32 Encoder;
 		} Samples;
 
 		struct {
@@ -156,24 +171,90 @@ class SyncedPWMADC
 
 	#ifdef USE_FREERTOS
 		SemaphoreHandle_t _sampleAvailable;
+		uint32_t _missedSamples{0};
 	#else
 		bool _sampleAvailable;
 	#endif
 
+#ifdef USE_FREERTOS
+		QueueHandle_t SampleQueue{0};
+#endif
+
+		typedef struct {
+			float Scale;
+			float Offset;
+		} LinearCalibration_t;
+
+		struct {
+			struct {
+				bool Enabled{true};
+				LinearCalibration_t VSENSE1{7.727648075001389f, 2.046357403267474f};
+				LinearCalibration_t VSENSE3{7.725908854717028f, 2.016612563141451f};
+			} CurrentSense;
+
+			struct {
+				bool Enabled{false};
+				struct {
+					LinearCalibration_t LowRange{1.0f, 0.0f}; // With voltage-divider disabled
+					LinearCalibration_t HighRange{1.0f, 0.0f}; // With voltage-divider enabled
+				} BEMF1;
+				struct {
+					LinearCalibration_t LowRange{1.0f, 0.0f}; // With voltage-divider disabled
+					LinearCalibration_t HighRange{1.0f, 0.0f}; // With voltage-divider enabled
+				} BEMF3;
+			} Bemf;
+
+			struct {
+				bool Enabled{true};
+				LinearCalibration_t VBUS{(18.f + 169.f) / 18.f , 0.0f};
+			} Vbus;
+		} ChannelCalibrations; // channel specific calibrations
+
+		Encoder * _encoder{0};
+
+		typedef enum : uint8_t {
+			None = 0,
+			CurrentSense = 1,
+			BackEMF = 2
+		} ValueType;
+
+		typedef struct __attribute__((__packed__)) {
+			uint32_t Timestamp{0};
+
+			uint32_t PWM_Frequency{0}; // Hz
+			uint32_t TimerMax{0}; // timer count
+			uint32_t DutyCycleLocation{0}; // timer count
+			uint32_t TriggerLocationON{0}; // timer count
+			uint32_t TriggerLocationOFF{0}; // timer count
+
+			struct __attribute__((__packed__)) {
+				ValueType Type{None};
+				float ValueON{0};
+				float ValueOFF{0};
+			} Sense;
+
+			float VbusON{0};
+			float VbusOFF{0};
+			int32_t Encoder{0};
+		} CombinedSample_t;
+
 	public:
 		void SetOperatingMode(OperatingMode_t mode);
 		void SetPWMFrequency(uint32_t frequency);
-		void SetDutyCycle(float duty);
+		//void SetDutyCycle(float duty);
 		float GetCurrentDutyCycle();
 
 		void SetDutyCycle_MiddleSampling(float dutyPct);
 		void SetDutyCycle_EndSampling(float dutyPct);
 		void SetDutyCycle_MiddleSamplingOnce(float dutyPct);
 
-		Sample GetCurrent();
-		Sample GetVin();
-		Sample GetBemf();
-		SampleSingle GetPotentiometer();
+		void AssignEncoder(Encoder * encoder);
+		void DetermineCurrentSenseOffset();
+
+		SampleFloat GetCurrent();
+		SampleFloat GetVin();
+		SampleFloat GetBemf();
+		SampleSingleFloat GetPotentiometer();
 
 		void WaitForNewSample();
 

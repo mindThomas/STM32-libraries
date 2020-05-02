@@ -133,16 +133,14 @@ void SyncedPWMADC::InitOpAmps()
 	hOpAmp.Init.PgaConnect = OPAMP_PGA_CONNECT_INVERTINGINPUT_IO0_BIAS;
 	hOpAmp.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
 	hOpAmp.Init.UserTrimming = OPAMP_TRIMMING_FACTORY;
-
-	if (!ENABLE_DEBUG_OPAMP_OUTPUT) {
-		hOpAmp.Init.InternalOutput = ENABLE;
-	} else {
-		hOpAmp.Init.InternalOutput = DISABLE; // in debug mode we sample the external output
-	}
+	hOpAmp.Init.InternalOutput = ENABLE;
 
 	{
 		OPAMP_HandleTypeDef handle = hOpAmp;
 		handle.Instance = OPAMP1;
+		if (ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
+			handle.Init.InternalOutput = DISABLE; // in debug mode we sample the external output
+		}
 		if (HAL_OPAMP_Init(&handle) != HAL_OK)
 		{
 			ERROR("Could not initialize OPAMP1");
@@ -272,6 +270,8 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 		StopSampling();
 	}
 
+	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+
 	/* Channel overview
 		PA2     ------> ADC1_IN3					[VSENSE1 - when OpAmp external output is enabled]
 						ADC_CHANNEL_VOPAMP1			[VSENSE1]
@@ -301,6 +301,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 	timerSettingsNext.Triggers.ON.Index = 0;
 	timerSettingsNext.Triggers.OFF.Enabled = true;
 	timerSettingsNext.Triggers.OFF.Index = 1;
+	timerSettingsNext.Changed = false;
 	timerSettingsCurrent = timerSettingsNext;
 
 	/* Define sample time */
@@ -317,7 +318,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 		ADCidx = 1;
 
 		{ /* Current sense 1 */
-			if (!ENABLE_DEBUG_OPAMP_OUTPUT) {
+			if (!ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
 				sConfig.Channel = ADC_CHANNEL_VOPAMP1; // Current sense 1
 				Channels.VSENSE1.ADC = ADCidx;
 				Channels.VSENSE1.Index = numberOfChannels;
@@ -357,14 +358,9 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 		ADCidx = 2;
 
 		{ /* Current sense 3 */
-			if (!ENABLE_DEBUG_OPAMP_OUTPUT) {
-				sConfig.Channel = ADC_CHANNEL_VOPAMP3_ADC2; // Current sense 3
-				Channels.VSENSE3.ADC = ADCidx;
-				Channels.VSENSE3.Index = numberOfChannels;
-			} else {
-				// IDLE channel when OpAmp output is enabled since this won't work
-				sConfig.Channel = ADC_CHANNEL_14; // BEMF3
-			}
+			sConfig.Channel = ADC_CHANNEL_VOPAMP3_ADC2; // Current sense 3
+			Channels.VSENSE3.ADC = ADCidx;
+			Channels.VSENSE3.Index = numberOfChannels;
 			sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
 			if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK)
 			{
@@ -403,6 +399,8 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 		}
 	}
 
+	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
+
 	if (ShouldRestart) {
 		StartSampling();
 	}
@@ -418,6 +416,8 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 	if (ShouldRestart) {
 		StopSampling();
 	}
+
+	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
 
 	/* Channel overview
 		PA2     ------> ADC1_IN3					[VSENSE1 - when OpAmp external output is enabled]
@@ -448,6 +448,7 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 	timerSettingsNext.Triggers.ON.Index = 0;
 	timerSettingsNext.Triggers.OFF.Enabled = true;
 	timerSettingsNext.Triggers.OFF.Index = 1;
+	timerSettingsNext.Changed = false;
 	timerSettingsCurrent = timerSettingsNext;
 
 	/* Define sample time */
@@ -539,6 +540,8 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 		}
 	}
 
+	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
+
 	if (ShouldRestart) {
 		StartSampling();
 	}
@@ -594,8 +597,8 @@ void SyncedPWMADC::InitDMAs()
     	hDMA_ADC1.Init.Mode = DMA_NORMAL; // wait for DMA to be started/triggered and the fill the buffer ONCE
     } else {
     	hDMA_ADC1.Init.Mode = DMA_CIRCULAR; // we want to sample at every PWM period, so it should just run continuously in a circular fashion
-    	_samplingInterval = 1;
-    	_samplingNumSamples = 1;
+    	timerSettingsNext.samplingInterval = 1;
+    	timerSettingsNext.samplingNumSamples = 1;
     }
 
     if (HAL_DMA_Init(&hDMA_ADC1) != HAL_OK)
@@ -620,8 +623,8 @@ void SyncedPWMADC::InitDMAs()
     	hDMA_ADC2.Init.Mode = DMA_NORMAL; // wait for DMA to be started/triggered and the fill the buffer ONCE
     } else {
     	hDMA_ADC2.Init.Mode = DMA_CIRCULAR; // we want to sample at every PWM period, so it should just run continuously in a circular fashion
-    	_samplingInterval = 1;
-    	_samplingNumSamples = 1;
+    	timerSettingsNext.samplingInterval = 1;
+    	timerSettingsNext.samplingNumSamples = 1;
     }
 
     if (HAL_DMA_Init(&hDMA_ADC2) != HAL_OK)

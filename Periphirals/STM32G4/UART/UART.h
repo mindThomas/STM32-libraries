@@ -57,8 +57,8 @@ class UART
 		} uart_errors_t;
 
 	public:
-		UART(port_t port, uint32_t baud, bool DMA_enabled = false); // unbuffered constructor = polling only
-		UART(port_t port, uint32_t baud, uint32_t bufferLength, bool DMA_enabled = false); // ring-buffered constructor
+		UART(port_t port, uint32_t baud, bool DMA_enabled = true); // unbuffered constructor = polling only
+		UART(port_t port, uint32_t baud, uint32_t bufferLength, bool DMA_enabled = true); // ring-buffered constructor
 		~UART();
 
 		void InitPeripheral();

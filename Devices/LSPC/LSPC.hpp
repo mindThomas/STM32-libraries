@@ -13,11 +13,10 @@
 #endif
 #include "MessageTypes.h"
 
-#define LSPC_MAX_ASYNCHRONOUS_PACKAGE_SIZE			100  // bytes
 #define LSPC_MAXIMUM_PACKAGE_LENGTH					250
-#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH				50   // maximum 100 asynchronous packages in queue
-#define LSPC_RX_PROCESSING_THREAD_STACK_SIZE		512
-#define LSPC_TX_TRANSMITTER_THREAD_STACK_SIZE		512
+#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH				100   // maximum 100 asynchronous packages in queue
+#define LSPC_RX_PROCESSING_THREAD_STACK_SIZE		256
+#define LSPC_TX_TRANSMITTER_THREAD_STACK_SIZE		(LSPC_MAXIMUM_PACKAGE_LENGTH)
 
 namespace lspc
 {
@@ -86,21 +85,25 @@ private:
 
 
 public:
-  void TransmitAsync(uint8_t type, const uint8_t * payload, uint16_t payloadLength)
+  bool TransmitAsync(uint8_t type, const uint8_t * payload, uint16_t payloadLength)
   {
 	  LSPC_Async_Package_t package;
-	  if (payloadLength > LSPC_MAXIMUM_PACKAGE_LENGTH) return; // payload size is too big
+	  if (payloadLength > LSPC_MAXIMUM_PACKAGE_LENGTH) return false; // payload size is too big
 	  if (uxQueueSpacesAvailable(_TXqueue) == 0) {
-		  return; // no space in queue
+		  return false; // no space in queue
 	  }
+
+	  if (xPortGetFreeHeapSize() <= 3*payloadLength) return false; // not enough space for payload
 
 	  package.type = type;
 	  package.payloadPtr = new std::vector<uint8_t>(payloadLength);
-	  if (!package.payloadPtr) return;
+	  if (!package.payloadPtr) return false;
 	  memcpy(package.payloadPtr->data(), payload, payloadLength);
 	  if (xQueueSend(_TXqueue, (void *)&package, (TickType_t) 0) != pdTRUE) {
 		  delete(package.payloadPtr); // could not add package to queue, probably because it is full
 	  }
+
+	  return true;
   }
 
   bool Connected(void)
