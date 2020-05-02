@@ -36,6 +36,8 @@
 		void InitADCs();
 		void DeInitADCs();
 		uint32_t ADC_ChannelIndexToADCRank(uint8_t chIndex);
+		void ADC_Start(ADC_HandleTypeDef * hadc);
+		void ADC_Stop(ADC_HandleTypeDef * hadc);
 
 		void InitDMAs();
 		void DeInitDMAs();
@@ -46,8 +48,12 @@
 	public:
 		void SetSamplingInterval(uint16_t samplingInterval);
 
+		void StartADC();
+		void StopADC();
+
 		void StartSampling();
 		void StopSampling();
+		void RestartSampling();
 
 		void StartPWM();
 		void StopPWM();
@@ -66,6 +72,7 @@
 		uint32_t _ADC_Clock;
 		uint16_t _ADC_SampleTime_Total_us;
 
+		bool _ADCEnabled;
 		bool _SamplingEnabled;
 		bool _TimerEnabled;
 

@@ -168,6 +168,8 @@ class SyncedPWMADC
 		Sample GetBemf();
 		SampleSingle GetPotentiometer();
 
+		void Tone(uint32_t frequency, uint16_t onTime_ms, uint16_t offTime_ms);
+
 	private:
 		void RecomputePredefinedCounts();
 

@@ -646,25 +646,146 @@ void SyncedPWMADC::DeInitDMAs()
 	HAL_DMA_DeInit(hADC1.DMA_Handle);
 }
 
+void SyncedPWMADC::StartADC()
+{
+	if (_ADCEnabled) return; // ADC already running
+	_ADCEnabled = true;
+
+	ADC_Start(&hADC1);
+	ADC_Start(&hADC2);
+}
+
+
+void SyncedPWMADC::StopADC()
+{
+	if (!_ADCEnabled) return; // sampling already stopped
+	_ADCEnabled = false;
+
+	LL_ADC_REG_StopConversion(hADC1.Instance);
+	LL_ADC_REG_StopConversion(hADC2.Instance);
+
+	ADC_Stop(&hADC1);
+	ADC_Stop(&hADC2);
+}
+
+void SyncedPWMADC::ADC_Start(ADC_HandleTypeDef * hadc)
+{
+	// Based on "HAL_ADC_Start_DMA"
+	/* Perform ADC enable and conversion start if no conversion is on going */
+	if (LL_ADC_REG_IsConversionOngoing(hadc->Instance) == 0UL)
+	{
+		/* Start conversion if ADC is effectively enabled */
+		if (ADC_Enable(hadc) == HAL_OK)
+		{
+	        /* Set ADC state                                                        */
+	        /* - Clear state bitfield related to regular group conversion results   */
+	        /* - Set state bitfield related to regular operation                    */
+			ADC_STATE_CLR_SET(hadc->State,
+							  HAL_ADC_STATE_READY | HAL_ADC_STATE_REG_EOC | HAL_ADC_STATE_REG_OVR | HAL_ADC_STATE_REG_EOSMP,
+							  HAL_ADC_STATE_REG_BUSY);
+
+			CLEAR_BIT(hadc->State, HAL_ADC_STATE_MULTIMODE_SLAVE);
+
+			ADC_CLEAR_ERRORCODE(hadc);
+
+
+			/* Set the DMA transfer complete callback */
+			hadc->DMA_Handle->XferCpltCallback = ADC_DMAConvCplt;
+
+			/* Set the DMA half transfer complete callback */
+			hadc->DMA_Handle->XferHalfCpltCallback = ADC_DMAHalfConvCplt;
+
+			/* Set the DMA error callback */
+			hadc->DMA_Handle->XferErrorCallback = ADC_DMAError;
+
+			/* Clear regular group conversion flag and overrun flag               */
+			__HAL_ADC_CLEAR_FLAG(hadc, (ADC_FLAG_EOC | ADC_FLAG_EOS | ADC_FLAG_OVR));
+
+			/* Start ADC group regular conversion */
+			//LL_ADC_REG_StartConversion(hadc->Instance);
+		} else {
+			ERROR("Could not start ADC");
+		}
+	} else {
+		ERROR("Could not start ADC");
+	}
+}
+
+void SyncedPWMADC::ADC_Stop(ADC_HandleTypeDef * hadc)
+{
+	/* 1. Stop potential ADC group regular conversion on going */
+	/* And Disable ADC peripheral if conversions are effectively stopped */
+	if (ADC_ConversionStop(hadc, ADC_REGULAR_INJECTED_GROUP) == HAL_OK)
+	{
+		/* Disable ADC DMA (ADC DMA configuration of continous requests is kept) */
+		CLEAR_BIT(hadc->Instance->CFGR, ADC_CFGR_DMAEN);
+
+		/* Disable ADC overrun interrupt */
+		__HAL_ADC_DISABLE_IT(hadc, ADC_IT_OVR);
+
+		/* 2. Disable the ADC peripheral */
+		/* And Check if ADC is effectively disabled */
+		if (ADC_Disable(hadc) == HAL_OK)
+		{
+			/* Set ADC state */
+			ADC_STATE_CLR_SET(hadc->State,
+							  HAL_ADC_STATE_REG_BUSY | HAL_ADC_STATE_INJ_BUSY,
+							  HAL_ADC_STATE_READY);
+		}
+	} else {
+		ERROR("Could not stop ADC");
+	}
+}
+
 void SyncedPWMADC::StartSampling()
 {
-	_SamplingEnabled = true;
+	if (!_ADCEnabled) { // ADCs not enabled
+		StartADC();
+	}
 
-    HAL_ADC_Start_DMA(&hADC1, (uint32_t*)_ADC1_buffer, _samplingNumSamples*timerSettingsCurrent.Triggers.numEnabledTriggers*Channels.ADCnumChannels[0]);
-    __HAL_ADC_DISABLE_IT(&hADC1, ADC_IT_OVR); // disable Overrun interrupt since it will be triggered all the time during the "idle" period between DMA reads
-    _DMA_ADC1_ongoing = 1;
-
-    HAL_ADC_Start_DMA(&hADC2, (uint32_t*)_ADC2_buffer, _samplingNumSamples*timerSettingsCurrent.Triggers.numEnabledTriggers*Channels.ADCnumChannels[1]);
-    __HAL_ADC_DISABLE_IT(&hADC2, ADC_IT_OVR); // disable Overrun interrupt since it will be triggered all the time during the "idle" period between DMA reads
-    _DMA_ADC2_ongoing = 1;
+	// Enable the sampling synchronized to the timer
+	__HAL_TIM_CLEAR_IT(&hTimer, TIM_IT_UPDATE); // important to clear the interrupt before enabling since the update flag might be set without the interrupt having been enabled, and thus the interrupt would end up firing right after enabling it
+	__HAL_TIM_ENABLE_IT(&hTimer, TIM_IT_UPDATE);
 }
 
 void SyncedPWMADC::StopSampling()
 {
+	// Disable the sampling synchronized to the timer
+	__HAL_TIM_DISABLE_IT(&hTimer, TIM_IT_UPDATE);
+
+	if (!_SamplingEnabled) return; // sampling already stopped
+
+	if (_ADCEnabled) { // Stop the enabled ADCs
+		StopADC();
+	}
+
+	/* Disable ADC DMA (ADC DMA configuration of continous requests is kept) */
+	CLEAR_BIT(hADC1.Instance->CFGR, ADC_CFGR_DMAEN);
+	CLEAR_BIT(hADC2.Instance->CFGR, ADC_CFGR_DMAEN);
+
 	_SamplingEnabled = false;
 
-    HAL_ADC_Stop_DMA(&hADC1);
-    HAL_ADC_Stop_DMA(&hADC2);
+	if (hDMA_ADC1.State != HAL_DMA_STATE_READY) {
+		HAL_DMA_Abort(&hDMA_ADC1);
+	}
+	if (hDMA_ADC2.State != HAL_DMA_STATE_READY) {
+		HAL_DMA_Abort(&hDMA_ADC2);
+	}
+
+    __HAL_ADC_CLEAR_FLAG(&hADC1, (ADC_FLAG_EOC | ADC_FLAG_EOS | ADC_FLAG_OVR));
+    __HAL_ADC_CLEAR_FLAG(&hADC2, (ADC_FLAG_EOC | ADC_FLAG_EOS | ADC_FLAG_OVR));
+
+    _DMA_ADC1_ongoing = 0;
+    _DMA_ADC2_ongoing = 0;
+}
+
+void SyncedPWMADC::RestartSampling()
+{
+	if (_SamplingEnabled)
+	{
+		StopSampling();
+		StartSampling();
+	}
 }
 
 // Not used in DMA mode. So this interrupt would generally not be called

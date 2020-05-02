@@ -186,7 +186,7 @@ void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
 	}
 
-	if (timerSettingsNext.DutyCycle > 0) {
+	if (timerSettingsNext.DutyCycle >= 0) {
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
 	} else {
@@ -215,6 +215,11 @@ void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
 	}
 	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
 	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
+
+	// When we sample in every cycle the DMA is not triggered periodically but only configured and enabled once. So we need to reconfigure the DMA if we changed the number of triggers
+	if (SAMPLE_IN_EVERY_PWM_CYCLE && timerSettingsNext.Triggers.numEnabledTriggers != timerSettingsCurrent.Triggers.numEnabledTriggers) {
+		RestartSampling();
+	}
 }
 
 void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
@@ -266,7 +271,7 @@ void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
 	}
 
-	if (timerSettingsNext.DutyCycle > 0) {
+	if (timerSettingsNext.DutyCycle >= 0) {
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
 	} else {
@@ -295,6 +300,11 @@ void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
 	}
 	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
 	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
+
+	// When we sample in every cycle the DMA is not triggered periodically but only configured and enabled once. So we need to reconfigure the DMA if we changed the number of triggers
+	if (SAMPLE_IN_EVERY_PWM_CYCLE && timerSettingsNext.Triggers.numEnabledTriggers != timerSettingsCurrent.Triggers.numEnabledTriggers) {
+		RestartSampling();
+	}
 }
 
 
@@ -356,7 +366,7 @@ void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
 	}
 
-	if (timerSettingsNext.DutyCycle > 0) {
+	if (timerSettingsNext.DutyCycle >= 0) {
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
 	} else {
@@ -385,6 +395,11 @@ void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
 	}
 	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
 	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
+
+	// When we sample in every cycle the DMA is not triggered periodically but only configured and enabled once. So we need to reconfigure the DMA if we changed the number of triggers
+	if (SAMPLE_IN_EVERY_PWM_CYCLE && timerSettingsNext.Triggers.numEnabledTriggers != timerSettingsCurrent.Triggers.numEnabledTriggers) {
+		RestartSampling();
+	}
 }
 
 void SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC * obj)
@@ -393,7 +408,12 @@ void SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC * obj)
 
 	if (obj->samplingPin) {
 		if (obj->SAMPLE_IN_EVERY_PWM_CYCLE || obj->_DMA_ADC1_ongoing || obj->_DMA_ADC2_ongoing) {
-			obj->samplingPin->High();
+
+			if ((__HAL_TIM_GET_FLAG(&obj->hTimer, TIM_FLAG_CC2) != RESET && obj->timerSettingsNext.Triggers.ON.Enabled) ||
+				(__HAL_TIM_GET_FLAG(&obj->hTimer, TIM_FLAG_CC4) != RESET && obj->timerSettingsNext.Triggers.OFF.Enabled))
+			{
+				obj->samplingPin->High();
+			}
 		}
 	}
 }
@@ -403,8 +423,6 @@ void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 	if (!obj) return;
 
 	/* Called by the Timer Update interrupt vector to trigger/initiate a DMA sample */
-	if (obj->SAMPLE_IN_EVERY_PWM_CYCLE) return; // this method can only be used when sample triggering mode is manual (not happening at every PWM period)
-										   // actually the method should not even have been called
 
 	if (obj->_DMA_ADC1_ongoing || obj->_DMA_ADC2_ongoing) return; // Previous conversion not finished yet
 	if (obj->hDMA_ADC1.State != HAL_DMA_STATE_READY || obj->hDMA_ADC2.State != HAL_DMA_STATE_READY) return;
@@ -429,6 +447,22 @@ void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 	HAL_DMA_Start_IT(&obj->hDMA_ADC2, (uint32_t)&obj->hADC2.Instance->DR, (uint32_t)&obj->_ADC2_buffer[0], obj->_samplingNumSamples*obj->timerSettingsCurrent.Triggers.numEnabledTriggers*obj->Channels.ADCnumChannels[1]);
 	LL_ADC_REG_StartConversion(obj->hADC2.Instance);
 	obj->_DMA_ADC2_ongoing = 1;
+
+	if (!obj->_SamplingEnabled) {
+		// Interrupt called for the first time
+		obj->_SamplingEnabled = 1;
+
+		/* Enable ADC DMA mode */
+		SET_BIT(obj->hADC1.Instance->CFGR, ADC_CFGR_DMAEN);
+		SET_BIT(obj->hADC2.Instance->CFGR, ADC_CFGR_DMAEN);
+
+		if (obj->SAMPLE_IN_EVERY_PWM_CYCLE) {
+			// When sampling in every sample we only need to enable the DMA once
+			// And then we disable the interrupt since it is now running
+			__HAL_TIM_DISABLE_IT(&obj->hTimer, TIM_IT_UPDATE);
+		}
+		return;
+	}
 }
 
 // ToDo: OBS! It's a very bad idea to put these callbacks in here.
@@ -471,6 +505,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 		// Compute Vref voltage (based on __LL_ADC_CALC_VREFANALOG_VOLTAGE - with 12-bit ADC resolution)
 		uint16_t * buf;
 		uint8_t nc;
+		uint32_t timestamp = HAL_GetHighResTick();
 
 		if (obj->Channels.VREF.ADC) {
 			if (obj->Channels.VREF.ADC == 1) {
@@ -480,7 +515,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				buf = obj->_ADC2_buffer;
 				nc = obj->Channels.ADCnumChannels[1];
 			}
-			obj->Samples.Vref.Timestamp = HAL_GetHighResTick();
+			obj->Samples.Vref.Timestamp = timestamp;
 			if (obj->timerSettingsCurrent.Triggers.ON.Enabled)
 				obj->Samples.Vref.ValueON = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc];
 			if (obj->timerSettingsCurrent.Triggers.OFF.Enabled)
@@ -497,7 +532,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				obj->Samples.CurrentSense.Timestamp = HAL_GetHighResTick();
+				obj->Samples.CurrentSense.Timestamp = timestamp;
 				if (obj->timerSettingsCurrent.Triggers.ON.Enabled)
 					obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
 				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled)
@@ -513,7 +548,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				obj->Samples.CurrentSense.Timestamp = HAL_GetHighResTick();
+				obj->Samples.CurrentSense.Timestamp = timestamp;
 				if (obj->timerSettingsCurrent.Triggers.ON.Enabled)
 					obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
 				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled)
@@ -533,7 +568,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				obj->Samples.Bemf.Timestamp = HAL_GetHighResTick();
+				obj->Samples.Bemf.Timestamp = timestamp;
 
 				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 					float v_bemf = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
@@ -558,7 +593,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
-				obj->Samples.Bemf.Timestamp = HAL_GetHighResTick();
+				obj->Samples.Bemf.Timestamp = timestamp;
 
 				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 					float v_bemf = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
@@ -581,7 +616,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				nc = obj->Channels.ADCnumChannels[1];
 			}
 
-			obj->Samples.Vbus.Timestamp = HAL_GetHighResTick();
+			obj->Samples.Vbus.Timestamp = timestamp;
 
 			if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 				float v_vbus = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;

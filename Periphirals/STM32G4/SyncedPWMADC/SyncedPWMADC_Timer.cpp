@@ -172,10 +172,8 @@ void SyncedPWMADC::InitTimer(uint32_t frequency)
 	HAL_NVIC_SetPriority(TIM1_BRK_TIM15_IRQn, 7, 0);
 	HAL_NVIC_EnableIRQ(TIM1_BRK_TIM15_IRQn);
 
-	if (!SAMPLE_IN_EVERY_PWM_CYCLE) {
-		HAL_NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 5, 0);
-		HAL_NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);
-	}
+	HAL_NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 5, 0);
+	HAL_NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);
 
 	if (DEBUG_MODE_ENABLED) {
 		HAL_NVIC_SetPriority(TIM1_CC_IRQn, 1, 0);
@@ -191,12 +189,6 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 {
 	timerSettingsNext.Frequency = frequency;
 
-	bool ShouldRestart = false;
-	if (_TimerEnabled) {
-		ShouldRestart = true;
-		StopPWM();
-	}
-
 	volatile uint32_t TimerClock = HAL_RCC_GetPCLK2Freq();
 
 	/* Configure the timer frequency */
@@ -204,12 +196,11 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 	hTimer.Init.CounterMode = TIM_COUNTERMODE_UP; //TIM_COUNTERMODE_CENTERALIGNED1;
 	hTimer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	hTimer.Init.RepetitionCounter = _samplingInterval - 1;
-	hTimer.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+	hTimer.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE; // Enable preload to ensure that frequency changes will only be effectuated at the beginning of each PWM period
 
 	// Find PWM prescaler to yield the largest possible ARR while still keeping it within 16-bit
 	// Based on "A few useful formulas" from the STM32 Timer slides (PDF)
 	// fPWM = fTIM / ((ARR+1)*(PSC+1))
-
 	// Start with no prescaler: _PWM_prescaler = PSC+1 = 1
 	uint32_t ARR = 0x10000;
 	timerSettingsNext.Prescaler = 0;
@@ -220,16 +211,6 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 	}
 	hTimer.Init.Period = ARR;
 	hTimer.Init.Prescaler = timerSettingsNext.Prescaler - 1;
-
-	// Configure timer prescaler based on desired frequency
-	//   fCNT = (ARR+1) * fPERIOD
-	//   PSC = (fTIM / fCNT) - 1
-	// Added prescaler computation as float such that rounding can happen
-	/*float prescaler = ((float)TimerClock / ((hTimer.Init.Period+1) * _PWM_frequency));
-	_PWM_prescaler = (uint32_t)roundf(prescaler);
-	hTimer.Init.Prescaler = _PWM_prescaler - 1;
-	hTimer.Init.Period = _PWM_maxValue - 1; // this will allow duty cycles (CCR register) to go from 0 to maxValue, with maxValue giving 100% duty cycle (fully on)
-	*/
 
 	// Recompute actual frequency
 	timerSettingsNext.Frequency = TimerClock / ((hTimer.Init.Period+1) * timerSettingsNext.Prescaler);
@@ -246,10 +227,6 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, 0);
 	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, 0);
 	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, 0);
-
-	if (ShouldRestart) {
-		StartPWM();
-	}
 }
 
 
@@ -260,10 +237,7 @@ void SyncedPWMADC::DeInitTimer()
 
     /* TIM1 interrupt DeInit */
     HAL_NVIC_DisableIRQ(TIM1_BRK_TIM15_IRQn);
-
-    if (!SAMPLE_IN_EVERY_PWM_CYCLE) {
-    	HAL_NVIC_DisableIRQ(TIM1_UP_TIM16_IRQn);
-    }
+	HAL_NVIC_DisableIRQ(TIM1_UP_TIM16_IRQn);
 
     if (DEBUG_MODE_ENABLED) {
     	HAL_NVIC_DisableIRQ(TIM1_CC_IRQn);
@@ -402,11 +376,6 @@ void SyncedPWMADC::StartPWM()
     HAL_TIM_PWM_Start(&hTimer, TIM_CHANNEL_5);
     HAL_TIM_PWM_Start(&hTimer, TIM_CHANNEL_6);
 
-    // Enable update interrupt if we need to trigger DMA at n-th period
-    if (!SAMPLE_IN_EVERY_PWM_CYCLE) {
-    	__HAL_TIM_ENABLE_IT(&hTimer, TIM_IT_UPDATE);
-    }
-
     // Enable debug channels (only used internally)
     if (DEBUG_MODE_ENABLED) {
     	HAL_TIM_PWM_Start_IT(&hTimer, TIM_CHANNEL_2); // __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_CC2);
@@ -422,10 +391,6 @@ void SyncedPWMADC::StopPWM()
 	HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_3);
 	HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_5);
 	HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_6);
-
-	if (!SAMPLE_IN_EVERY_PWM_CYCLE) {
-		__HAL_TIM_DISABLE_IT(&hTimer, TIM_IT_UPDATE);
-	}
 
 	if (DEBUG_MODE_ENABLED) {
 		HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_2);
@@ -456,7 +421,8 @@ void TIM1_CC_IRQHandler(void)
 	// For debugging purposes
 	if (!SyncedPWMADC::globalObject) return;
 
+	SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC::globalObject);
+
 	// Is only used for capture compare
 	__HAL_TIM_CLEAR_IT(&SyncedPWMADC::globalObject->hTimer, TIM_IT_CC1 | TIM_IT_CC2 | TIM_IT_CC3 | TIM_IT_CC4);
-	SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC::globalObject);
 }
