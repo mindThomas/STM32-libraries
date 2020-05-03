@@ -129,7 +129,8 @@ class SyncedPWMADC
 		} Channels;
 
 		typedef struct {
-			bool Changed;
+			bool Changed; // timer settings changed
+			uint8_t InvalidateSamples; // how many of the following samples to invalidate due to a timer setting change
 			uint32_t Frequency; // Hz
 			uint32_t Prescaler;
 			float DutyCycle;

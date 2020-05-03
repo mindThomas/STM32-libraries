@@ -240,6 +240,7 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 		TIM_Base_SetConfig(hTimer.Instance, &hTimer.Init);
 	}
 
+	timerSettingsNext.InvalidateSamples = 1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
 	timerSettingsNext.Changed = true;
 	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
 }
@@ -358,17 +359,18 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 	if (SAMPLE_IN_EVERY_PWM_CYCLE) return; // sampling interval is not supported when sampling in every PWM cycle
 
 	// In SAMPLE_IN_EVERY_PWM_CYCLE mode sample interval should at least be 2 PWM periods
-	if (samplingInterval >= 2) {
-		xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+	if (samplingInterval < 2)
+		samplingInterval = 2;
 
-		timerSettingsNext.samplingInterval = samplingInterval;
-		hTimer.Instance->RCR = timerSettingsNext.samplingInterval - 1;
+	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
 
-		// The change is effective instantaneously
-		timerSettingsCurrent.samplingInterval = timerSettingsNext.samplingInterval;
+	timerSettingsNext.samplingInterval = samplingInterval;
+	hTimer.Instance->RCR = timerSettingsNext.samplingInterval - 1;
 
-		xSemaphoreGive( _timerSettingsMutex ); // unlock settings
-	}
+	// The change is effective instantaneously
+	timerSettingsCurrent.samplingInterval = timerSettingsNext.samplingInterval;
+
+	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
 }
 
 void SyncedPWMADC::TIM_CCxNChannelCmd(TIM_TypeDef *TIMx, uint32_t Channel, uint32_t ChannelNState)
