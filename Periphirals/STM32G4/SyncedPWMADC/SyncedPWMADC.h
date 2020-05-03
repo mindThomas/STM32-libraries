@@ -47,7 +47,7 @@
 // When a DMA sampling is started/triggered it will fill up the buffer.
 // Maximum number of ADC samples the DMA buffer can hold
 // _samplingNumSamples*NUM_CHANNELS*NUM_TRIGGERS <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE
-#define ADC_DMA_HALFWORD_MAX_BUFFER_SIZE 16
+#define ADC_DMA_HALFWORD_MAX_BUFFER_SIZE 12
 
 #define SAMPLE_QUEUE_SIZE	100
 
@@ -99,7 +99,7 @@ class SyncedPWMADC
 		ALIGN_32BYTES (uint16_t _ADC1_buffer[ADC_DMA_HALFWORD_MAX_BUFFER_SIZE]){0}; // 32-bytes Alignement is needed for cache maintenance purpose
 		ALIGN_32BYTES (uint16_t _ADC2_buffer[ADC_DMA_HALFWORD_MAX_BUFFER_SIZE]){0}; // 32-bytes Alignement is needed for cache maintenance purpose
 
-		OperatingMode_t _OperatingMode{BRAKE};
+		OperatingMode_t _operatingMode{BRAKE};
 
 		typedef struct {
 			uint8_t ADC;
@@ -137,6 +137,7 @@ class SyncedPWMADC
 			bool Direction; // Forward = true
 			uint32_t TimerMax; // ARR+1
 			uint32_t DutyCycleLocation; // timer count
+			bool BemfAlternateRange;
 			bool BemfHighRange; // high-range enabled = voltage-divider enabled
 			Triggers_t Triggers;
 
@@ -155,7 +156,7 @@ class SyncedPWMADC
 		struct {
 			SampleFloat Vref;
 			SampleFloat CurrentSense;
-			SampleFloat Bemf;
+			SampleSingleFloat Bemf; // BEMF is only included from the OFF-period
 			SampleFloat Vbus;
 			SampleSingleInt32 Encoder;
 		} Samples;
@@ -213,12 +214,6 @@ class SyncedPWMADC
 
 		Encoder * _encoder{0};
 
-		typedef enum : uint8_t {
-			None = 0,
-			CurrentSense = 1,
-			BackEMF = 2
-		} ValueType;
-
 		typedef struct __attribute__((__packed__)) {
 			uint32_t Timestamp{0};
 
@@ -229,10 +224,11 @@ class SyncedPWMADC
 			uint32_t TriggerLocationOFF{0}; // timer count
 
 			struct __attribute__((__packed__)) {
-				ValueType Type{None};
-				float ValueON{0};
-				float ValueOFF{0};
-			} Sense;
+				float ON{0};
+				float OFF{0};
+			} Current;
+
+			float Bemf{0};
 
 			float VbusON{0};
 			float VbusOFF{0};
@@ -241,6 +237,8 @@ class SyncedPWMADC
 
 	public:
 		void SetOperatingMode(OperatingMode_t mode);
+		OperatingMode_t GetOperatingMode(void);
+		void SetBemfRange(bool high_range);
 		void SetPWMFrequency(uint32_t frequency);
 		//void SetDutyCycle(float duty);
 		float GetCurrentDutyCycle();
@@ -254,7 +252,7 @@ class SyncedPWMADC
 
 		SampleFloat GetCurrent();
 		SampleFloat GetVin();
-		SampleFloat GetBemf();
+		SampleSingleFloat GetBemf();
 		SampleSingleFloat GetPotentiometer();
 
 		void WaitForNewSample();

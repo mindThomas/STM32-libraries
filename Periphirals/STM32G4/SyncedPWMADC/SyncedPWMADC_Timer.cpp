@@ -67,12 +67,11 @@ void SyncedPWMADC::ConfigureDigitalPins()
 
     // GPIO_BEMF - Enables Back-EMF sense voltage divider when set low (GPIO_PIN_RESET)
     GPIO_InitStruct.Pin = GPIO_PIN_5;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
     HAL_GPIO_WritePin(GPIOB, GPIO_InitStruct.Pin, GPIO_PIN_RESET);
-    timerSettingsNext.BemfHighRange = true;
 }
 
 void SyncedPWMADC::DeInitDigitalPins()
@@ -80,6 +79,12 @@ void SyncedPWMADC::DeInitDigitalPins()
 	HAL_GPIO_DeInit(GPIOC, GPIO_PIN_13);
 	HAL_GPIO_DeInit(GPIOB, GPIO_PIN_15);
 	HAL_GPIO_DeInit(GPIOA, GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_12);
+}
+
+void SyncedPWMADC::EnableBemfVoltageDivider(bool enabled)
+{
+	// Enables Back-EMF sense voltage divider when set low (GPIO_PIN_RESET)
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, (GPIO_PinState)(!enabled));
 }
 
 void SyncedPWMADC::InitTimer(uint32_t frequency)

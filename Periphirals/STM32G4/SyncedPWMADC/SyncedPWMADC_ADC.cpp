@@ -547,6 +547,178 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 	}
 }
 
+
+void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
+{
+	bool ShouldRestart = false;
+	if (_SamplingEnabled || LL_ADC_REG_IsConversionOngoing(hADC1.Instance) || LL_ADC_REG_IsConversionOngoing(hADC2.Instance))
+	{
+		ShouldRestart = true;
+	}
+	if (ShouldRestart) {
+		StopSampling();
+	}
+
+	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+
+	/* Channel overview
+		PA2     ------> ADC1_IN3					[VSENSE1 - when OpAmp external output is enabled]
+						ADC_CHANNEL_VOPAMP1			[VSENSE1]
+		PB1     ------> ADC1_IN12					[VSENSE3 - when OpAmp external output is enabled]
+						ADC_CHANNEL_VOPAMP3_ADC2	[VSENSE3]
+		PB12    ------> ADC1_IN11					[POTENTIOMETER]
+		PA0     ------> ADC2_IN1					[VBUS]
+		PA6     ------> ADC2_IN3					[VSENSE2 - when OpAmp external output is enabled]
+						ADC_CHANNEL_VOPAMP2			[VSENSE2]
+		PA4     ------> ADC2_IN17					[BEMF1]
+		PC4     ------> ADC2_IN5					[BEMF2]
+		PB11    ------> ADC1/2_IN14					[BEMF3]
+						ADC_CHANNEL_VREFINT			[VREF]
+    */
+
+	/* Configure ADC channels */
+	ADC_ChannelConfTypeDef sConfig = {0};
+	sConfig.SingleDiff = ADC_SINGLE_ENDED;
+	sConfig.OffsetNumber = ADC_OFFSET_NONE;
+	sConfig.Offset = 0;
+	memset(&Channels, 0, sizeof(Channels)); // reset Channels configuration
+
+	/* Set default Channel trigger configuration */
+	/* By default 2 triggers (ON- and OFF-period) is enabled */
+	timerSettingsNext.Triggers.numEnabledTriggers = 2;
+	timerSettingsNext.Triggers.ON.Enabled = true;
+	timerSettingsNext.Triggers.ON.Index = 0;
+	timerSettingsNext.Triggers.OFF.Enabled = true;
+	timerSettingsNext.Triggers.OFF.Index = 1;
+	timerSettingsNext.Changed = false;
+	timerSettingsCurrent = timerSettingsNext;
+
+	/* Define sample time */
+	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
+	float ADC_SampleTimeTotalCycles = 47.5 + 12.5; // Sampling cycles + Conversion cycles
+	float ADC_SampleTime = ADC_SampleTimeTotalCycles / (float)_ADC_Clock;
+	uint16_t ADC_SampleTime_SingleChannel_us = (uint16_t)(ceilf(1000000.f * ADC_SampleTime));
+
+	uint8_t numberOfChannels = 0;
+	uint8_t ADCidx = 0;
+
+	{ /* Configure channels on ADC1 */
+		numberOfChannels = 0;
+		ADCidx = 1;
+
+		{ /* Current sense 1 */
+			if (!ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
+				sConfig.Channel = ADC_CHANNEL_VOPAMP1; // Current sense 1
+				Channels.VSENSE1.ADC = ADCidx;
+				Channels.VSENSE1.Index = numberOfChannels;
+			} else {
+				sConfig.Channel = ADC_CHANNEL_3; // Current sense 1
+				Channels.VSENSE1.ADC = ADCidx;
+				Channels.VSENSE1.Index = numberOfChannels;
+			}
+			sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+			if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK)
+			{
+				ERROR("Could not configure channel on ADC1");
+			}
+			numberOfChannels++;
+		}
+
+		{ /* BEMF3 */
+			sConfig.Channel = ADC_CHANNEL_14; // BEMF3
+			sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+			Channels.BEMF3.ADC = ADCidx;
+			Channels.BEMF3.Index = numberOfChannels;
+			if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK)
+			{
+				ERROR("Could not configure channel on ADC2");
+			}
+			numberOfChannels++;
+		}
+
+		{ /* Internal Vref */
+			sConfig.Channel = ADC_CHANNEL_VREFINT; // Vref
+			sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+			Channels.VREF.ADC = ADCidx;
+			Channels.VREF.Index = numberOfChannels;
+			if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK)
+			{
+				ERROR("Could not configure channel on ADC1");
+			}
+			numberOfChannels++;
+		}
+
+		/* Set number of ranks in regular group sequencer of ADC1 */
+		Channels.ADCnumChannels[0] = numberOfChannels;
+		MODIFY_REG(hADC1.Instance->SQR1, ADC_SQR1_L, (numberOfChannels - (uint8_t)1));
+	}
+
+
+	{ /* Configure channels on ADC2 */
+		numberOfChannels = 0;
+		ADCidx = 2;
+
+		{ /* Current sense 3 */
+			sConfig.Channel = ADC_CHANNEL_VOPAMP3_ADC2; // Current sense 3
+			Channels.VSENSE3.ADC = ADCidx;
+			Channels.VSENSE3.Index = numberOfChannels;
+			sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+			if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK)
+			{
+				ERROR("Could not configure channel on ADC2");
+			}
+			numberOfChannels++;
+		}
+
+		{ /* BEMF1 */
+			sConfig.Channel = ADC_CHANNEL_17; // BEMF1
+			sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+			Channels.BEMF1.ADC = ADCidx;
+			Channels.BEMF1.Index = numberOfChannels;
+			if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK)
+			{
+				ERROR("Could not configure channel on ADC2");
+			}
+			numberOfChannels++;
+		}
+
+		{ /* Vbus */
+			sConfig.Channel = ADC_CHANNEL_1; // Vbus
+			sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+			Channels.VBUS.ADC = ADCidx;
+			Channels.VBUS.Index = numberOfChannels;
+			if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK)
+			{
+				ERROR("Could not configure channel on ADC2");
+			}
+			numberOfChannels++;
+		}
+
+		/* Set number of ranks in regular group sequencer of ADC2 */
+		Channels.ADCnumChannels[1] = numberOfChannels;
+		MODIFY_REG(hADC2.Instance->SQR1, ADC_SQR1_L, (numberOfChannels - (uint8_t)1));
+	}
+
+
+	if (Channels.ADCnumChannels[0] > Channels.ADCnumChannels[1]) {
+		_ADC_SampleTime_Total_us = Channels.ADCnumChannels[0] * ADC_SampleTime_SingleChannel_us;
+		if ((ADC_DMA_HALFWORD_MAX_BUFFER_SIZE % Channels.ADCnumChannels[0]) > 0) {
+			ERROR("DMA buffer size is not a multiple of the number of channels to sample");
+		}
+	} else {
+		_ADC_SampleTime_Total_us = Channels.ADCnumChannels[1] * ADC_SampleTime_SingleChannel_us;
+		if ((ADC_DMA_HALFWORD_MAX_BUFFER_SIZE % Channels.ADCnumChannels[1]) > 0) {
+			ERROR("DMA buffer size is not a multiple of the number of channels to sample");
+		}
+	}
+
+	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
+
+	if (ShouldRestart) {
+		StartSampling();
+	}
+}
+
 uint32_t SyncedPWMADC::ADC_ChannelIndexToADCRank(uint8_t chIndex)
 {
 	switch (chIndex) {

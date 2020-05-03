@@ -24,8 +24,10 @@
 		void DeInitDigitalPins();
 		void ConfigureAnalogPins();
 		void DeInitAnalogPins();
+		void EnableBemfVoltageDivider(bool enabled);
 		void ADC_ConfigureCurrentSenseSampling();
 		void ADC_ConfigureBackEMFSampling();
+		void ADC_ConfigureCoastModeSampling();
 
 		void InitTimer(uint32_t frequency);
 		void DeInitTimer();

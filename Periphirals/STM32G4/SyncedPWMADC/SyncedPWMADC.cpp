@@ -51,6 +51,8 @@ SyncedPWMADC::SyncedPWMADC(uint32_t frequency, float maxDuty)
 	}
 	timerSettingsNext.samplingNumSamples = 1; // capture samples from one PWM period after every interval (hence every PWM period)
 	timerSettingsNext.InvalidateSamples = 0;
+	timerSettingsNext.BemfAlternateRange = false;
+	timerSettingsNext.BemfHighRange = true;
 	_DMA_ADC1_ongoing = false;
 	_DMA_ADC2_ongoing = false;
 	_TimerEnabled = false;
@@ -115,16 +117,27 @@ SyncedPWMADC::~SyncedPWMADC()
 
 void SyncedPWMADC::SetOperatingMode(OperatingMode_t mode)
 {
-	_OperatingMode = mode;
+	_operatingMode = mode;
 
-	if (_OperatingMode == BRAKE) {
+	if (_operatingMode == BRAKE) {
 		ADC_ConfigureCurrentSenseSampling();
 		Timer_ConfigureBrakeMode();
 	}
-	else if (_OperatingMode == COAST) {
-		ADC_ConfigureBackEMFSampling();
+	else if (_operatingMode == COAST) {
+		//ADC_ConfigureBackEMFSampling();
+		ADC_ConfigureCoastModeSampling();
 		Timer_ConfigureCoastMode(timerSettingsCurrent.Direction);
 	}
+}
+
+SyncedPWMADC::OperatingMode_t SyncedPWMADC::GetOperatingMode(void)
+{
+	return _operatingMode;
+}
+
+void SyncedPWMADC::SetBemfRange(bool high_range)
+{
+	timerSettingsNext.BemfHighRange = high_range;
 }
 
 void SyncedPWMADC::SetPWMFrequency(uint32_t frequency)
@@ -243,7 +256,7 @@ void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 	}
 
-	if (_OperatingMode == COAST) {
+	if (_operatingMode == COAST) {
 		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
 
@@ -335,7 +348,7 @@ void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 	}
 
-	if (_OperatingMode == COAST) {
+	if (_operatingMode == COAST) {
 		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
 
@@ -436,7 +449,7 @@ void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
 		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 	}
 
-	if (_OperatingMode == COAST) {
+	if (_operatingMode == COAST) {
 		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
 
@@ -582,8 +595,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 			obj->Samples.Vref.UpdatedOFF = false;
 			obj->Samples.CurrentSense.UpdatedON = false;
 			obj->Samples.CurrentSense.UpdatedOFF = false;
-			obj->Samples.Bemf.UpdatedON = false;
-			obj->Samples.Bemf.UpdatedOFF = false;
+			obj->Samples.Bemf.Updated = false;
 			obj->Samples.Vbus.UpdatedON = false;
 			obj->Samples.Vbus.UpdatedOFF = false;
 			obj->Samples.Encoder.Updated = false;
@@ -618,13 +630,13 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					}
 					obj->Samples.CurrentSense.Timestamp = timestamp;
 					obj->Samples.CurrentSense.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
-					obj->Samples.CurrentSense.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
+					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & obj->_operatingMode == BRAKE); // Current sense can only be sampled during OFF-period in BRAKE mode
 					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 						obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueON - obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
 					}
-					if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+					if (obj->Samples.CurrentSense.UpdatedOFF) {
 						obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueOFF - obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
@@ -642,13 +654,13 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					}
 					obj->Samples.CurrentSense.Timestamp = timestamp;
 					obj->Samples.CurrentSense.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
-					obj->Samples.CurrentSense.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
+					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & obj->_operatingMode == BRAKE); // Current sense can only be sampled during OFF-period in BRAKE mode
 					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 						obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueON - obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
 					}
-					if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+					if (obj->Samples.CurrentSense.UpdatedOFF) {
 						obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueOFF - obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
@@ -656,72 +668,53 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				}
 			}
 
-			if (obj->timerSettingsCurrent.Direction) { // Forward
-				// In forward direction it is CH3,CH3N that changes.
-				// During COAST mode CH3N is forced to be LOW at all times, causing LOW PWM to deactivate the CH3,CH3N MOSFET
-				// Back-EMF should thus be sampled from OUT3 = BEMF3
-				if (obj->Channels.BEMF3.ADC) {
-					if (obj->Channels.BEMF3.ADC == 1) {
-						buf = obj->_ADC1_buffer;
-						nc = obj->Channels.ADCnumChannels[0];
-					} else {
-						buf = obj->_ADC2_buffer;
-						nc = obj->Channels.ADCnumChannels[1];
-					}
-					obj->Samples.Bemf.Timestamp = timestamp;
-					obj->Samples.Bemf.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
-					obj->Samples.Bemf.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
-					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
-						obj->Samples.Bemf.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
-						if (obj->ChannelCalibrations.Bemf.Enabled) {
-							if (obj->timerSettingsCurrent.BemfHighRange)
-								obj->Samples.Bemf.ValueON = obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Scale * (obj->Samples.Bemf.ValueON - obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Offset);
-							else
-								obj->Samples.Bemf.ValueON = obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Scale * (obj->Samples.Bemf.ValueON - obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Offset);
+			if (obj->_operatingMode == COAST) { // Back-EMF can only be sampled in OFF-period of COAST mode
+				if (obj->timerSettingsCurrent.Direction) { // Forward
+					// In forward direction it is CH3,CH3N that changes.
+					// During COAST mode CH3N is forced to be LOW at all times, causing LOW PWM to deactivate the CH3,CH3N MOSFET
+					// Back-EMF should thus be sampled from OUT3 = BEMF3
+					if (obj->Channels.BEMF3.ADC) {
+						if (obj->Channels.BEMF3.ADC == 1) {
+							buf = obj->_ADC1_buffer;
+							nc = obj->Channels.ADCnumChannels[0];
+						} else {
+							buf = obj->_ADC2_buffer;
+							nc = obj->Channels.ADCnumChannels[1];
+						}
+						obj->Samples.Bemf.Timestamp = timestamp;
+						obj->Samples.Bemf.Updated = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
+						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+							obj->Samples.Bemf.Value = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+							if (obj->ChannelCalibrations.Bemf.Enabled) {
+								if (obj->timerSettingsCurrent.BemfHighRange)
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Offset);
+								else
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Offset);
+							}
 						}
 					}
-					if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
-						obj->Samples.Bemf.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
-						if (obj->ChannelCalibrations.Bemf.Enabled) {
-							if (obj->timerSettingsCurrent.BemfHighRange)
-								obj->Samples.Bemf.ValueOFF = obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Scale * (obj->Samples.Bemf.ValueOFF - obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Offset);
-							else
-								obj->Samples.Bemf.ValueOFF = obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Scale * (obj->Samples.Bemf.ValueOFF - obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Offset);
+				} else { // Backward
+					// In backward direction it is CH1,CH1N that changes.
+					// During COAST mode CH1N is forced to be LOW at all times, causing LOW PWM to deactivate the CH1,CH1N MOSFET
+					// Back-EMF should thus be sampled from OUT1 = BEMF1
+					if (obj->Channels.BEMF1.ADC) {
+						if (obj->Channels.BEMF1.ADC == 1) {
+							buf = obj->_ADC1_buffer;
+							nc = obj->Channels.ADCnumChannels[0];
+						} else {
+							buf = obj->_ADC2_buffer;
+							nc = obj->Channels.ADCnumChannels[1];
 						}
-					}
-
-				}
-			} else { // Backward
-				// In backward direction it is CH1,CH1N that changes.
-				// During COAST mode CH1N is forced to be LOW at all times, causing LOW PWM to deactivate the CH1,CH1N MOSFET
-				// Back-EMF should thus be sampled from OUT1 = BEMF1
-				if (obj->Channels.BEMF1.ADC) {
-					if (obj->Channels.BEMF1.ADC == 1) {
-						buf = obj->_ADC1_buffer;
-						nc = obj->Channels.ADCnumChannels[0];
-					} else {
-						buf = obj->_ADC2_buffer;
-						nc = obj->Channels.ADCnumChannels[1];
-					}
-					obj->Samples.Bemf.Timestamp = timestamp;
-					obj->Samples.Bemf.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
-					obj->Samples.Bemf.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
-					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
-						obj->Samples.Bemf.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
-						if (obj->ChannelCalibrations.Bemf.Enabled) {
-							if (obj->timerSettingsCurrent.BemfHighRange)
-								obj->Samples.Bemf.ValueON = obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Scale * (obj->Samples.Bemf.ValueON - obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Offset);
-							else
-								obj->Samples.Bemf.ValueON = obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Scale * (obj->Samples.Bemf.ValueON - obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Offset);
-						}
-					}
-					if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
-						obj->Samples.Bemf.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
-						if (obj->ChannelCalibrations.Bemf.Enabled) {
-							if (obj->timerSettingsCurrent.BemfHighRange)
-								obj->Samples.Bemf.ValueOFF = obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Scale * (obj->Samples.Bemf.ValueOFF - obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Offset);
-							else
-								obj->Samples.Bemf.ValueOFF = obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Scale * (obj->Samples.Bemf.ValueOFF - obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Offset);
+						obj->Samples.Bemf.Timestamp = timestamp;
+						obj->Samples.Bemf.Updated = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
+						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+							obj->Samples.Bemf.Value = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+							if (obj->ChannelCalibrations.Bemf.Enabled) {
+								if (obj->timerSettingsCurrent.BemfHighRange)
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Offset);
+								else
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Offset);
+							}
 						}
 					}
 				}
@@ -759,6 +752,11 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				obj->Samples.Encoder.Value = obj->_encoder->Get();
 			}
 
+			if (obj->timerSettingsCurrent.BemfAlternateRange) {
+				obj->timerSettingsCurrent.BemfHighRange = !obj->timerSettingsCurrent.BemfHighRange;
+				obj->EnableBemfVoltageDivider(obj->timerSettingsCurrent.BemfHighRange); // enable voltage divider in high-range mode
+			}
+
 #ifdef USE_FREERTOS
 			CombinedSample_t CombinedSample = {0};
 			CombinedSample.Timestamp = timestamp;
@@ -768,21 +766,14 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 			CombinedSample.TriggerLocationON = obj->timerSettingsCurrent.Triggers.ON.Location;
 			CombinedSample.TriggerLocationOFF = obj->timerSettingsCurrent.Triggers.OFF.Location;
 
-			CombinedSample.Sense.Type = None;
-			if (obj->Samples.CurrentSense.UpdatedON || obj->Samples.CurrentSense.UpdatedOFF) {
-				CombinedSample.Sense.Type = CurrentSense;
-				if (obj->Samples.CurrentSense.UpdatedON)
-					CombinedSample.Sense.ValueON = obj->Samples.CurrentSense.ValueON;
-				if (obj->Samples.CurrentSense.UpdatedOFF)
-					CombinedSample.Sense.ValueOFF = obj->Samples.CurrentSense.ValueOFF;
-			}
-			else if (obj->Samples.Bemf.UpdatedON || obj->Samples.Bemf.UpdatedOFF) {
-				CombinedSample.Sense.Type = BackEMF;
-				if (obj->Samples.Bemf.UpdatedON)
-					CombinedSample.Sense.ValueON = obj->Samples.Bemf.ValueON;
-				if (obj->Samples.Bemf.UpdatedOFF)
-					CombinedSample.Sense.ValueOFF = obj->Samples.Bemf.ValueOFF;
-			}
+			if (obj->Samples.CurrentSense.UpdatedON)
+				CombinedSample.Current.ON = obj->Samples.CurrentSense.ValueON;
+			if (obj->Samples.CurrentSense.UpdatedOFF)
+				CombinedSample.Current.OFF = obj->Samples.CurrentSense.ValueOFF;
+
+			if (obj->Samples.Bemf.Updated)
+				CombinedSample.Bemf = obj->Samples.Bemf.Value;
+
 			if (obj->Samples.Vbus.UpdatedON)
 				CombinedSample.VbusON = obj->Samples.Vbus.ValueON;
 			if (obj->Samples.Vbus.UpdatedOFF)
@@ -810,8 +801,15 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 #ifdef USE_FREERTOS
 			if (xSemaphoreTakeFromISR( obj->_timerSettingsMutex, &xHigherPriorityTaskWoken )) {
 #endif
-				obj->hTimer.Instance->RCR = obj->timerSettingsNext.samplingInterval - 1;
 				obj->timerSettingsNext.Changed = false;
+
+				// Apply the changed timer settings that has to be latched
+				obj->hTimer.Instance->RCR = obj->timerSettingsNext.samplingInterval - 1;
+
+				if (obj->timerSettingsNext.BemfHighRange != obj->timerSettingsCurrent.BemfHighRange) {
+					obj->EnableBemfVoltageDivider(obj->timerSettingsNext.BemfHighRange); // enable voltage divider in high-range mode
+				}
+
 				obj->timerSettingsCurrent = obj->timerSettingsNext;
 #ifdef USE_FREERTOS
 				xSemaphoreGiveFromISR( obj->_timerSettingsMutex, &xHigherPriorityTaskWoken );
@@ -859,7 +857,7 @@ SyncedPWMADC::SampleFloat SyncedPWMADC::GetVin()
 	return Samples.Vbus;
 }
 
-SyncedPWMADC::SampleFloat SyncedPWMADC::GetBemf()
+SyncedPWMADC::SampleSingleFloat SyncedPWMADC::GetBemf()
 {
 	return Samples.Bemf;
 }
@@ -893,8 +891,8 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
 		xQueueReset(SampleQueue);
 		while (SampleCount < 100) {
 			if (xQueueReceive( SampleQueue, &sample, ( TickType_t ) portMAX_DELAY ) == pdPASS) {
-				if (sample.Sense.Type == CurrentSense && sample.Sense.ValueOFF != 0) {
-					CurrentSenseOffset1 += sample.Sense.ValueOFF; // Single trigger sampling configured and since duty cycle is OFF the sample would be put in the OFF field
+				if (sample.Current.OFF != 0) {
+					CurrentSenseOffset1 += sample.Current.OFF; // Single trigger sampling configured and since duty cycle is OFF the sample would be put in the OFF field
 					SampleCount++;
 				}
 			}
@@ -918,8 +916,8 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
 		xQueueReset(SampleQueue);
 		while (SampleCount < 100) {
 			if (xQueueReceive( SampleQueue, &sample, ( TickType_t ) portMAX_DELAY ) == pdPASS) {
-				if (sample.Sense.Type == CurrentSense && sample.Sense.ValueOFF != 0) {
-					CurrentSenseOffset3 += sample.Sense.ValueOFF; // Single trigger sampling configured and since duty cycle is OFF the sample would be put in the OFF field
+				if (sample.Current.OFF != 0) {
+					CurrentSenseOffset3 += sample.Current.OFF; // Single trigger sampling configured and since duty cycle is OFF the sample would be put in the OFF field
 					SampleCount++;
 				}
 			}
