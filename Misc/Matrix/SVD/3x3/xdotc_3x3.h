@@ -2,32 +2,27 @@
 // Academic License - for use in teaching, academic research, and meeting
 // course requirements at degree granting institutions only.  Not for
 // government, commercial, or other organizational use.
-// File: sqrt.cpp
+// File: xdotc.h
 //
 // MATLAB Coder version            : 4.0
 // C/C++ source code generated on  : 12-Feb-2019 21:10:49
 //
+#ifndef XDOTC_3x3_H
+#define XDOTC_3x3_H
 
 // Include Files
-#include "mw_cmsis.h"
-#include "rt_nonfinite.h"
-#include "sqrt.h"
+#include <stddef.h>
+#include <stdlib.h>
+#include "rtwtypes.h"
+#include "svd_types.h"
 
-// Function Definitions
+// Function Declarations
+extern float xdotc_3x3(int n, const float x[9], int ix0, const float y[9], int iy0);
 
-//
-// Arguments    : float *x
-// Return Type  : void
-//
-void b_sqrt(float *x)
-{
-  float f2;
-  mw_arm_sqrt_f32(*x, &f2);
-  *x = f2;
-}
+#endif
 
 //
-// File trailer for sqrt.cpp
+// File trailer for xdotc.h
 //
 // [EOF]
 //
