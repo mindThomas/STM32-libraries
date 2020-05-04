@@ -56,6 +56,10 @@ UART::UART(port_t port, uint32_t baud, uint32_t bufferLength) : BaudRate(baud), 
 		#else
 		_buffer = (uint8_t *)malloc(_bufferLength);
 		#endif
+		if (_buffer == NULL) {
+			ERROR("Could not create UART buffer");
+			return;
+		}
 		memset(_buffer, 0, _bufferLength);
 	} else {
 		_buffer = 0;
@@ -90,50 +94,11 @@ void UART::ConfigurePeripheral()
 				return;
 			}
 			_handle.Instance = USART2;
+			objUART2 = this;
 			break;
 		default:
 			ERROR("Undefined UART port");
 			return;
-	}
-
-	_handle.Init.BaudRate = BaudRate;
-	_handle.Init.WordLength = UART_WORDLENGTH_8B;
-	_handle.Init.StopBits = UART_STOPBITS_1;
-	_handle.Init.Parity = UART_PARITY_NONE;
-	_handle.Init.Mode = UART_MODE_TX_RX;
-	_handle.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-	_handle.Init.OverSampling = UART_OVERSAMPLING_16;
-	_handle.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-	_handle.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-	_handle.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-
-	if (HAL_UART_Init(&_handle) != HAL_OK)
-	{
-		ERROR("Could not initialize UART port");
-		return;
-	}
-	if (HAL_UARTEx_SetTxFifoThreshold(&_handle, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-	{
-		ERROR("Could not initialize UART port");
-		return;
-	}
-	if (HAL_UARTEx_SetRxFifoThreshold(&_handle, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-	{
-		ERROR("Could not initialize UART port");
-		return;
-	}
-	if (HAL_UARTEx_DisableFifoMode(&_handle) != HAL_OK)
-	{
-		ERROR("Could not initialize UART port");
-		return;
-	}
-
-	switch (_port) {
-		case PORT_UART2:
-			objUART2 = this;
-			break;
-		default:
-			break;
 	}
 
 #ifdef USE_FREERTOS
@@ -162,6 +127,41 @@ void UART::ConfigurePeripheral()
 	vQueueAddToRegistry(_RXdataAvailable, "UART RX Available");
 #endif
 
+	_handle.Init.BaudRate = BaudRate;
+	_handle.Init.WordLength = UART_WORDLENGTH_8B;
+	_handle.Init.StopBits = UART_STOPBITS_1;
+	_handle.Init.Parity = UART_PARITY_NONE;
+	_handle.Init.Mode = UART_MODE_TX_RX;
+	_handle.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	_handle.Init.OverSampling = UART_OVERSAMPLING_16;
+	_handle.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+	_handle.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+	_handle.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+
+	__HAL_UART_DISABLE_IT(&_handle, UART_IT_RXFF | UART_IT_TXFE | UART_IT_RXFT | UART_IT_TXFT | UART_IT_WUF | UART_IT_CM | UART_IT_CTS | UART_IT_LBD | UART_IT_TXE | UART_IT_TXFNF | UART_IT_TC | UART_IT_RXNE | UART_IT_RXFNE | UART_IT_IDLE | UART_IT_PE | UART_IT_ERR);
+	HAL_NVIC_DisableIRQ(USART2_IRQn);
+
+	if (HAL_UART_Init(&_handle) != HAL_OK)
+	{
+		ERROR("Could not initialize UART port");
+		return;
+	}
+	if (HAL_UARTEx_SetTxFifoThreshold(&_handle, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+	{
+		ERROR("Could not initialize UART port");
+		return;
+	}
+	if (HAL_UARTEx_SetRxFifoThreshold(&_handle, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+	{
+		ERROR("Could not initialize UART port");
+		return;
+	}
+	if (HAL_UARTEx_DisableFifoMode(&_handle) != HAL_OK)
+	{
+		ERROR("Could not initialize UART port");
+		return;
+	}
+
 	if (!DMA_Enabled) {
 		/* Enable the UART Error Interrupt: (Frame error, noise error, overrun error) */
 		__HAL_UART_ENABLE_IT(&_handle, UART_IT_ERR);
@@ -182,6 +182,8 @@ void UART::ConfigurePeripheral()
 	// Enable IDLE line detection
 	__HAL_UART_ENABLE_IT(&_handle, UART_IT_IDLE);
 	_rxAvailableOnIdle = true;
+
+	HAL_NVIC_EnableIRQ(USART2_IRQn);
 }
 
 void UART::ConfigurePeripheral_DMA()
