@@ -369,6 +369,14 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 
 	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
 
+	if (samplingInterval < timerSettingsNext.samplingNumSamples) {
+		// Shrink the averaging period to match the new sampling interval
+		if (samplingInterval <= MAX_SAMPLING_NUM_SAMPLES)
+			timerSettingsNext.samplingNumSamples = samplingInterval-1;
+		else
+			timerSettingsNext.samplingNumSamples = MAX_SAMPLING_NUM_SAMPLES;
+	}
+
 	timerSettingsNext.samplingInterval = samplingInterval;
 	hTimer.Instance->RCR = timerSettingsNext.samplingInterval - 1;
 
@@ -376,6 +384,26 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 	timerSettingsCurrent.samplingInterval = timerSettingsNext.samplingInterval;
 
 	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
+}
+
+void SyncedPWMADC::SetNumberOfAveragingSamples(uint16_t numSamples)
+{
+	if (numSamples > 0 &&
+		numSamples <= MAX_SAMPLING_NUM_SAMPLES &&
+		numSamples * timerSettingsNext.Triggers.numEnabledTriggers * Channels.ADCnumChannels[0] <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE &&
+		numSamples * timerSettingsNext.Triggers.numEnabledTriggers * Channels.ADCnumChannels[1] <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE)
+	{
+		xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+		timerSettingsNext.samplingNumSamples = numSamples; // capture samples from one PWM period after every interval (hence every PWM period)
+		timerSettingsNext.InvalidateSamples = 1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
+		timerSettingsNext.Changed = true;
+		xSemaphoreGive( _timerSettingsMutex ); // unlock settings
+
+		if (numSamples >= timerSettingsNext.samplingInterval) {
+			// Sampling interval needs to be at least 3 sample more than the averaging interval (2 sample dead-time to allow sufficient time to compute/carry out the DMA sampling finished interrupt)
+			SetSamplingInterval(numSamples+2);
+		}
+	}
 }
 
 void SyncedPWMADC::TIM_CCxNChannelCmd(TIM_TypeDef *TIMx, uint32_t Channel, uint32_t ChannelNState)

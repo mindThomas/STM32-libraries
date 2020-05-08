@@ -41,7 +41,7 @@
 class Debug
 {
 	private:
-		const int THREAD_STACK_SIZE = 256; // notice that this much stack is apparently necessary to avoid issues
+		const int THREAD_STACK_SIZE = 512; // notice that this much stack is apparently necessary to avoid issues
 		const uint32_t THREAD_PRIORITY = DEBUG_MESSAGE_PRIORITY;
 
 	public:

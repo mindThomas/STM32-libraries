@@ -47,7 +47,10 @@
 // When a DMA sampling is started/triggered it will fill up the buffer.
 // Maximum number of ADC samples the DMA buffer can hold
 // _samplingNumSamples*NUM_CHANNELS*NUM_TRIGGERS <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE
-#define ADC_DMA_HALFWORD_MAX_BUFFER_SIZE 12
+#define MAX_SAMPLING_NUM_SAMPLES	50 // reduce this if the DMA buffer memory is taking up too much of the heap
+#define MAX_NUM_CHANNELS	3
+#define MAX_NUM_TRIGGERS	2
+#define ADC_DMA_HALFWORD_MAX_BUFFER_SIZE (MAX_SAMPLING_NUM_SAMPLES * MAX_NUM_CHANNELS * MAX_NUM_TRIGGERS)
 
 #define SAMPLE_QUEUE_SIZE	10
 
@@ -166,6 +169,9 @@ class SyncedPWMADC
 			uint16_t Sample; // sample time in timer counts
 			uint16_t Ripple;
 		} PredefinedCounts;
+
+		float VrefON[MAX_SAMPLING_NUM_SAMPLES]{0};
+		float VrefOFF[MAX_SAMPLING_NUM_SAMPLES]{0};
 
 	public:
 		bool _DMA_ADC1_ongoing; // should be moved to private

@@ -49,6 +49,7 @@
 
 	public:
 		void SetSamplingInterval(uint16_t samplingInterval);
+		void SetNumberOfAveragingSamples(uint16_t numSamples);
 
 		void StartADC();
 		void StopADC();

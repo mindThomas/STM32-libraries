@@ -584,6 +584,8 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 	   (obj->_DMA_ADC1_ongoing == 0 && obj->_DMA_ADC2_ongoing == 0)) {
 		uint16_t * buf;
 		uint8_t nc;
+		uint8_t numTriggers = obj->timerSettingsCurrent.Triggers.numEnabledTriggers;
+		uint16_t bufSkip;
 		uint32_t timestamp = HAL_GetHighResTick();
 #ifdef USE_FREERTOS
 		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
@@ -609,13 +611,36 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					buf = obj->_ADC2_buffer;
 					nc = obj->Channels.ADCnumChannels[1];
 				}
+				bufSkip = nc * numTriggers;
 				obj->Samples.Vref.Timestamp = timestamp;
 				obj->Samples.Vref.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
 				obj->Samples.Vref.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
-				if (obj->timerSettingsCurrent.Triggers.ON.Enabled)
-					obj->Samples.Vref.ValueON = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc];
-				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled)
-					obj->Samples.Vref.ValueOFF = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc];
+
+				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+					obj->Samples.Vref.ValueON = 0;
+					for (uint16_t i = 0, bufIdx = obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
+						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i++, bufIdx += bufSkip)
+					{
+						obj->VrefON[i] = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx];
+						obj->Samples.Vref.ValueON += obj->VrefON[i];
+					}
+					obj->Samples.Vref.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
+					//obj->Samples.Vref.ValueON = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc];
+				}
+
+				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+					obj->Samples.Vref.ValueOFF = 0;
+					for (uint16_t i = 0, bufIdx = obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
+						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i++, bufIdx += bufSkip)
+					{
+						obj->VrefOFF[i] = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx];
+						obj->Samples.Vref.ValueOFF += obj->VrefOFF[i];
+					}
+					obj->Samples.Vref.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
+					//obj->Samples.Vref.ValueOFF = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc];
+				}
 			}
 
 			if (obj->timerSettingsCurrent.Direction) { // Forward
@@ -630,14 +655,29 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					}
 					obj->Samples.CurrentSense.Timestamp = timestamp;
 					obj->Samples.CurrentSense.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
-					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & obj->_operatingMode == BRAKE); // Current sense can only be sampled during OFF-period in BRAKE mode
+					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & (obj->_operatingMode == BRAKE)); // Current sense can only be sampled during OFF-period in BRAKE mode
+
 					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
-						obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+						obj->Samples.CurrentSense.ValueON = 0;
+						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
+							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i++, bufIdx += bufSkip)
+						{
+							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
+						}
+						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueON - obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
 					}
 					if (obj->Samples.CurrentSense.UpdatedOFF) {
-						obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+						obj->Samples.CurrentSense.ValueOFF = 0;
+						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
+							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i++, bufIdx += bufSkip)
+						{
+							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+						}
+						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueOFF - obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
 					}
@@ -654,14 +694,29 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					}
 					obj->Samples.CurrentSense.Timestamp = timestamp;
 					obj->Samples.CurrentSense.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
-					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & obj->_operatingMode == BRAKE); // Current sense can only be sampled during OFF-period in BRAKE mode
+					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & (obj->_operatingMode == BRAKE)); // Current sense can only be sampled during OFF-period in BRAKE mode
+
 					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
-						obj->Samples.CurrentSense.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+						obj->Samples.CurrentSense.ValueON = 0;
+						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
+							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i++, bufIdx += bufSkip)
+						{
+							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
+						}
+						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueON - obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
 					}
 					if (obj->Samples.CurrentSense.UpdatedOFF) {
-						obj->Samples.CurrentSense.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+						obj->Samples.CurrentSense.ValueOFF = 0;
+						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
+							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i++, bufIdx += bufSkip)
+						{
+							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+						}
+						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
 							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueOFF - obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
 					}
@@ -684,7 +739,14 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 						obj->Samples.Bemf.Timestamp = timestamp;
 						obj->Samples.Bemf.Updated = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
 						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
-							obj->Samples.Bemf.Value = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+							obj->Samples.Bemf.Value = 0;
+							for (uint16_t i = 0, bufIdx = obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
+								i < obj->timerSettingsCurrent.samplingNumSamples;
+								i++, bufIdx += bufSkip)
+							{
+								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+							}
+							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingNumSamples;
 							if (obj->ChannelCalibrations.Bemf.Enabled) {
 								if (obj->timerSettingsCurrent.BemfHighRange)
 									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Offset);
@@ -708,7 +770,14 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 						obj->Samples.Bemf.Timestamp = timestamp;
 						obj->Samples.Bemf.Updated = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
 						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
-							obj->Samples.Bemf.Value = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+							obj->Samples.Bemf.Value = 0;
+							for (uint16_t i = 0, bufIdx = obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
+								i < obj->timerSettingsCurrent.samplingNumSamples;
+								i++, bufIdx += bufSkip)
+							{
+								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+							}
+							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingNumSamples;
 							if (obj->ChannelCalibrations.Bemf.Enabled) {
 								if (obj->timerSettingsCurrent.BemfHighRange)
 									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Offset);
@@ -733,13 +802,27 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				obj->Samples.Vbus.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
 				obj->Samples.Vbus.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
 				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
-					obj->Samples.Vbus.ValueON = obj->Samples.Vref.ValueON * (float)buf[obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc] / 4096.f;
+					obj->Samples.Vbus.ValueON = 0;
+					for (uint16_t i = 0, bufIdx = obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
+						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i++, bufIdx += bufSkip)
+					{
+						obj->Samples.Vbus.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
+					}
+					obj->Samples.Vbus.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
 					if (obj->ChannelCalibrations.Vbus.Enabled)
 						obj->Samples.Vbus.ValueON = obj->ChannelCalibrations.Vbus.VBUS.Scale * (obj->Samples.Vbus.ValueON - obj->ChannelCalibrations.Vbus.VBUS.Offset);
 				}
 
 				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
-					obj->Samples.Vbus.ValueOFF = obj->Samples.Vref.ValueOFF * (float)buf[obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc] / 4096.f;
+					obj->Samples.Vbus.ValueOFF = 0;
+					for (uint16_t i = 0, bufIdx = obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
+						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i++, bufIdx += bufSkip)
+					{
+						obj->Samples.Vbus.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+					}
+					obj->Samples.Vbus.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
 					if (obj->ChannelCalibrations.Vbus.Enabled)
 						obj->Samples.Vbus.ValueOFF = obj->ChannelCalibrations.Vbus.VBUS.Scale * (obj->Samples.Vbus.ValueOFF - obj->ChannelCalibrations.Vbus.VBUS.Offset);
 				}
@@ -876,6 +959,7 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
 	ChannelCalibrations.CurrentSense.Enabled = false; // disable calibration-compensation during calibration
 
 	SetOperatingMode(BRAKE);
+	SetNumberOfAveragingSamples(1);
 
 	// Sample current sense in Forward direction (VSENSE1)
 	{
