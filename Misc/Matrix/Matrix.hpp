@@ -51,6 +51,7 @@ private:
 	uint16_t size_{0};
 
 	float * mat{0};
+	bool free_at_destruction{false};
 	arm_matrix_instance_f32 mat_;
 	float tmp; // used for invalid assignments
 
@@ -59,11 +60,12 @@ public:
 	Matrix(const Matrix& other);
 	Matrix(uint8_t num_elements); // vector constructor
 	Matrix(uint8_t num_rows, uint8_t num_cols); // matrix constructor
+	Matrix(uint8_t num_rows, uint8_t num_cols, const float * move_mat);
 	~Matrix();
 
-	inline uint8_t rows() { return rows_; };
-	inline uint8_t cols() { return cols_; };
-	inline uint16_t size() { return size_; };
+	inline uint8_t rows() const { return rows_; };
+	inline uint8_t cols() const { return cols_; };
+	inline uint16_t size() const { return size_; };
 
 	float& operator()(uint8_t row);
 	const float& operator()(uint8_t row) const;
@@ -73,21 +75,20 @@ public:
 	Matrix& operator=(Matrix&& other) noexcept;
 	//Matrix& operator=(Matrix other) noexcept;
 
-	Matrix operator*(const Matrix& other);
+	Matrix operator*(const Matrix& other) const;
 
 	void zero();
 
 	void transpose();
-	void transpose(Matrix& out);
-	Matrix T();
-	Matrix inv();
-	float det();
-	Matrix diag();
+	void transpose(Matrix& out) const;
+	Matrix T() const;
+	Matrix inv() const;
+	float det() const;
+	Matrix diag() const;
 
-	void print(const char * preText = 0);
+	void print(const char * preText = 0) const;
 
 private:
-	Matrix(uint8_t num_rows, uint8_t num_cols, const float * move_mat);
 	operator arm_matrix_instance_f32*();
 	operator arm_matrix_instance_f32*() const;
 	operator float32_t*();
@@ -223,6 +224,18 @@ public:
 		else if (M.rows_ == 6) {
 			svd_6x6(M.mat, U.mat, S.mat, V.mat);
 		}
+	}
+
+	static inline float norm(const Matrix& V) {
+		// Currently only implemented for vectors (Euclidean vector norm)
+		if (V.cols_ != 1) return 0;
+
+		float res = 0;
+		for (uint8_t i = 0; i < V.rows_; i++) {
+			res += V.mat[i]*V.mat[i]; // use fast lookup since we know this is just a vector
+		}
+
+		return sqrtf(res);
 	}
 
 	inline void negate()

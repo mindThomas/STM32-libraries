@@ -39,6 +39,7 @@ Matrix::Matrix(uint8_t num_rows, uint8_t num_cols)
 {
 	mat = (float*)malloc((uint32_t)num_rows * (uint32_t)num_cols * sizeof(float));
 	if (mat) {
+		free_at_destruction = true;
 		//memset(mat, 0, (uint32_t)size_*sizeof(float)); // removed for speed
 		arm_mat_init_f32(&mat_, rows_, cols_, mat);
 	}
@@ -52,6 +53,7 @@ Matrix::Matrix(uint8_t num_elements)
 {
 	mat = (float*)malloc((uint32_t)num_elements * sizeof(float));
 	if (mat) {
+		free_at_destruction = true;
 		//memset(mat, 0, (uint32_t)size_*sizeof(float)); // removed for speed
 		arm_mat_init_f32(&mat_, rows_, cols_, mat);
 	}
@@ -65,6 +67,7 @@ Matrix::Matrix(const Matrix& other)
 {
 	mat = (float*)malloc((uint32_t)other.size_*sizeof(float));
 	if (mat) {
+		free_at_destruction = true;
 		arm_mat_init_f32(&mat_, rows_, cols_, mat);
 		memcpy(mat, other.mat, (uint32_t)size_*sizeof(float));
 	}
@@ -75,13 +78,14 @@ Matrix::Matrix(uint8_t num_rows, uint8_t num_cols, const float * move_mat)
 	, cols_{num_cols}
 	, size_{(uint16_t)num_rows*(uint16_t)num_cols}
 	, mat{(float *)move_mat}
+	, free_at_destruction{false}
 {
 	arm_mat_init_f32(&mat_, rows_, cols_, mat);
 }
 
 Matrix::~Matrix()
 {
-	if (mat) {
+	if (mat && free_at_destruction) {
 		free(mat);
 	}
 }
@@ -216,7 +220,7 @@ void Matrix::transpose()
 	delete transformed;
 }
 
-void Matrix::transpose(Matrix& out)
+void Matrix::transpose(Matrix& out) const
 {
 	// out = M^T
 	if (rows_ == out.cols_ ||
@@ -225,7 +229,7 @@ void Matrix::transpose(Matrix& out)
 	arm_mat_trans_f32(*this, out);
 }
 
-Matrix Matrix::T()
+Matrix Matrix::T() const
 {
 	// Needs to copy and apply transformation
 	Matrix transformed(cols_, rows_);
@@ -235,7 +239,7 @@ Matrix Matrix::T()
 }
 
 
-Matrix Matrix::operator*(const Matrix& other)
+Matrix Matrix::operator*(const Matrix& other) const
 {
 	// out = this * other
 	Matrix out(rows_, other.cols_);
@@ -243,7 +247,7 @@ Matrix Matrix::operator*(const Matrix& other)
     return out;
 }
 
-Matrix Matrix::inv()
+Matrix Matrix::inv() const
 {
 	// out = inv(this)
 	// only for invertible [read: square] matrices!
@@ -252,13 +256,13 @@ Matrix Matrix::inv()
     return out;
 }
 
-float Matrix::det()
+float Matrix::det() const
 {
 	// out = det(this)
     return determinant(*this);
 }
 
-Matrix Matrix::diag()
+Matrix Matrix::diag() const
 {
 	if (cols_ == 1) {
 		// Make diagonal matrix from vector
@@ -279,7 +283,7 @@ Matrix Matrix::diag()
 	}
 }
 
-void Matrix::print(const char * preText)
+void Matrix::print(const char * preText) const
 {
 	if (preText) {
 		Debug::print(preText);
