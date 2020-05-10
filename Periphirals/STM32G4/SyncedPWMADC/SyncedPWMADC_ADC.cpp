@@ -301,8 +301,8 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 	timerSettingsNext.Triggers.ON.Index = 0;
 	timerSettingsNext.Triggers.OFF.Enabled = true;
 	timerSettingsNext.Triggers.OFF.Index = 1;
-	timerSettingsNext.Changed = false;
-	timerSettingsCurrent = timerSettingsNext;
+	timerSettingsNext.Changed = true;
+	timerSettingsNext.InvalidateSamples = 1;
 
 	/* Define sample time */
 	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
@@ -448,8 +448,8 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 	timerSettingsNext.Triggers.ON.Index = 0;
 	timerSettingsNext.Triggers.OFF.Enabled = true;
 	timerSettingsNext.Triggers.OFF.Index = 1;
-	timerSettingsNext.Changed = false;
-	timerSettingsCurrent = timerSettingsNext;
+	timerSettingsNext.Changed = true;
+	timerSettingsNext.InvalidateSamples = 1;
 
 	/* Define sample time */
 	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
@@ -590,8 +590,8 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
 	timerSettingsNext.Triggers.ON.Index = 0;
 	timerSettingsNext.Triggers.OFF.Enabled = true;
 	timerSettingsNext.Triggers.OFF.Index = 1;
-	timerSettingsNext.Changed = false;
-	timerSettingsCurrent = timerSettingsNext;
+	timerSettingsNext.Changed = true;
+	timerSettingsNext.InvalidateSamples = 1;
 
 	/* Define sample time */
 	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
@@ -770,7 +770,7 @@ void SyncedPWMADC::InitDMAs()
     } else {
     	hDMA_ADC1.Init.Mode = DMA_CIRCULAR; // we want to sample at every PWM period, so it should just run continuously in a circular fashion
     	timerSettingsNext.samplingInterval = 1;
-    	timerSettingsNext.samplingNumSamples = 1;
+    	timerSettingsNext.samplingAveragingNumSamples = 1;
     }
 
     if (HAL_DMA_Init(&hDMA_ADC1) != HAL_OK)
@@ -796,7 +796,7 @@ void SyncedPWMADC::InitDMAs()
     } else {
     	hDMA_ADC2.Init.Mode = DMA_CIRCULAR; // we want to sample at every PWM period, so it should just run continuously in a circular fashion
     	timerSettingsNext.samplingInterval = 1;
-    	timerSettingsNext.samplingNumSamples = 1;
+    	timerSettingsNext.samplingAveragingNumSamples = 1;
     }
 
     if (HAL_DMA_Init(&hDMA_ADC2) != HAL_OK)

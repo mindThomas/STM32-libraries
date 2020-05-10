@@ -46,7 +46,7 @@
 
 // When a DMA sampling is started/triggered it will fill up the buffer.
 // Maximum number of ADC samples the DMA buffer can hold
-// _samplingNumSamples*NUM_CHANNELS*NUM_TRIGGERS <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE
+// _samplingAveragingNumSamples*NUM_CHANNELS*NUM_TRIGGERS <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE
 #define MAX_SAMPLING_NUM_SAMPLES	50 // reduce this if the DMA buffer memory is taking up too much of the heap
 #define MAX_NUM_CHANNELS	3
 #define MAX_NUM_TRIGGERS	2
@@ -67,6 +67,10 @@ class SyncedPWMADC
 		const bool DEBUG_MODE_ENABLED = true;
 		const bool ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT = false; // OBS. Current sense sampling will only work properly when driving forward
 		const bool SAMPLE_IN_EVERY_PWM_CYCLE = false; // setting this to true effectively sets "_samplingInterval=1" and "_samplingInterval=1"
+
+		// Back-EMF hysteresis - difference should be larger than expected variance in Back-EMF due to rotation
+		const float BEMF_SWITCH_TO_HIGH_RANGE_HYSTERESIS_THRESHOLD = 3.2f; // [V]
+		const float BEMF_SWITCH_TO_LOW_RANGE_HYSTERESIS_THRESHOLD = 1.5f; // [V]
 
 	public:
 		SyncedPWMADC(uint32_t frequency = 10000, float maxDuty = 0.98);
@@ -141,13 +145,14 @@ class SyncedPWMADC
 			uint32_t TimerMax; // ARR+1
 			uint32_t DutyCycleLocation; // timer count
 			bool BemfAlternateRange;
+			bool BemfAutoRange;
 			bool BemfHighRange; // high-range enabled = voltage-divider enabled
 			Triggers_t Triggers;
 
 			// Sampling parameters
 			uint16_t samplingInterval; // requires SAMPLE_IN_EVERY_PWM_CYCLE=false - number of PWM periods/cycles between each sample capture. If set to 1 it will sample in every PWM period.
-			uint16_t samplingNumSamples; // number of PWM period samples to capture after each sampling interval
-										  // samplingNumSamples <= samplingInterval
+			uint16_t samplingAveragingNumSamples; // number of PWM period samples to capture after each sampling interval
+										  // samplingAveragingNumSamples <= samplingInterval
 		} TimerSettings_t;
 #ifdef USE_FREERTOS
 		SemaphoreHandle_t _timerSettingsMutex;
@@ -179,6 +184,7 @@ class SyncedPWMADC
 
 	#ifdef USE_FREERTOS
 		SemaphoreHandle_t _sampleAvailable;
+		SemaphoreHandle_t _sampleAddedToQueue;
 		uint32_t _missedSamples{0};
 	#else
 		bool _sampleAvailable;
@@ -196,27 +202,28 @@ class SyncedPWMADC
 		struct {
 			struct {
 				bool Enabled{true};
-				LinearCalibration_t VSENSE1{7.727648075001389f, 2.046357403267474f};
-				LinearCalibration_t VSENSE3{7.725908854717028f, 2.016612563141451f};
+				// offset will be calibrated at startup
+				LinearCalibration_t VSENSE1{7.83254051f, -2.03055f}; // Forward = positive duty cycle
+				LinearCalibration_t VSENSE3{7.70393705f, -2.019571143213148f}; // Backward = negative duty cycle
 			} CurrentSense;
 
 			struct {
-				bool Enabled{false};
+				bool Enabled{true};
 				struct {
 					LinearCalibration_t LowRange{1.0f, 0.0f}; // With voltage-divider disabled
-					LinearCalibration_t HighRange{1.0f, 0.0f}; // With voltage-divider enabled
-				} BEMF1;
+					LinearCalibration_t HighRange{4.9366684f, -0.109847791f}; // With voltage-divider enabled
+				} BEMF1; // Backward = negative duty cycle
 				struct {
 					LinearCalibration_t LowRange{1.0f, 0.0f}; // With voltage-divider disabled
-					LinearCalibration_t HighRange{1.0f, 0.0f}; // With voltage-divider enabled
-				} BEMF3;
+					LinearCalibration_t HighRange{5.07898712f, -0.125128999f}; // With voltage-divider enabled
+				} BEMF3; // Forward = positive duty cycle
 			} Bemf;
 
 			struct {
 				bool Enabled{true};
-				LinearCalibration_t VBUS{(18.f + 169.f) / 18.f , 0.0f};
+				LinearCalibration_t VBUS{10.402566f, -0.00235557556f};//{(18.f + 169.f) / 18.f , 0.0f};
 			} Vbus;
-		} ChannelCalibrations; // channel specific calibrations
+		} ChannelCalibrations; // channel specific calibrations (PCB/hardware specific)
 
 		Encoder * _encoder{0};
 
@@ -239,15 +246,19 @@ class SyncedPWMADC
 			float VbusON{0};
 			float VbusOFF{0};
 			int32_t Encoder{0};
+
+			// Internal variables
+			bool BemfHighRange{false};
 		} CombinedSample_t;
 
 	public:
 		void SetOperatingMode(OperatingMode_t mode);
 		OperatingMode_t GetOperatingMode(void);
-		void SetBemfRange(bool high_range);
-		void SetPWMFrequency(uint32_t frequency);
+		void SetBemfRange(bool auto_range = true, bool high_range = true, bool alternating_range = false);
+		void SetPWMFrequency(uint32_t frequency, bool fixed_prescaler = false);
 		//void SetDutyCycle(float duty);
 		float GetCurrentDutyCycle();
+		bool GetCurrentDirection();
 
 		void SetDutyCycle_MiddleSampling(float dutyPct);
 		void SetDutyCycle_EndSampling(float dutyPct);
@@ -262,6 +273,7 @@ class SyncedPWMADC
 		SampleSingleFloat GetPotentiometer();
 
 		void WaitForNewSample();
+		void WaitForNewQueuedSample();
 
 	private:
 		void RecomputePredefinedCounts();

@@ -60,7 +60,7 @@
 
 		void StartPWM();
 		void StopPWM();
-		void Timer_Configure(uint32_t frequency);
+		void Timer_Configure(uint32_t frequency, bool fixed_prescaler = false);
 
 		void SetConstantOutput(bool OnOff, bool direction);
 

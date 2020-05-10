@@ -49,7 +49,7 @@ SyncedPWMADC::SyncedPWMADC(uint32_t frequency, float maxDuty)
 	} else {
 		timerSettingsNext.samplingInterval = 2; // sample every second PWM period (with SAMPLE_IN_EVERY_PWM_CYCLE=false, this is the fastest possible)
 	}
-	timerSettingsNext.samplingNumSamples = 1; // capture samples from one PWM period after every interval (hence every PWM period)
+	timerSettingsNext.samplingAveragingNumSamples = 1; // capture samples from one PWM period after every interval (hence every PWM period)
 	timerSettingsNext.InvalidateSamples = 0;
 	timerSettingsNext.BemfAlternateRange = false;
 	timerSettingsNext.BemfHighRange = true;
@@ -67,6 +67,15 @@ SyncedPWMADC::SyncedPWMADC(uint32_t frequency, float maxDuty)
 	vQueueAddToRegistry(_sampleAvailable, "ADC-PWM Sample Available");
 #else
 	_sampleAvailable = false;
+#endif
+
+#ifdef USE_FREERTOS
+	_sampleAddedToQueue = xSemaphoreCreateBinary();
+	if (_sampleAddedToQueue == NULL) {
+		ERROR("Could not create ADC-PWM Sample added to queue semaphore");
+		return;
+	}
+	vQueueAddToRegistry(_sampleAddedToQueue, "ADC-PWM Queued Sample Available");
 #endif
 
 #ifdef USE_FREERTOS
@@ -135,14 +144,17 @@ SyncedPWMADC::OperatingMode_t SyncedPWMADC::GetOperatingMode(void)
 	return _operatingMode;
 }
 
-void SyncedPWMADC::SetBemfRange(bool high_range)
+void SyncedPWMADC::SetBemfRange(bool auto_range, bool high_range, bool alternating_range)
 {
+	// OBS! Only enable auto_range if Bemf is calibrated
+	timerSettingsNext.BemfAutoRange = auto_range;
 	timerSettingsNext.BemfHighRange = high_range;
+	timerSettingsNext.BemfAlternateRange = alternating_range;
 }
 
-void SyncedPWMADC::SetPWMFrequency(uint32_t frequency)
+void SyncedPWMADC::SetPWMFrequency(uint32_t frequency, bool fixed_prescaler)
 {
-	Timer_Configure(frequency);
+	Timer_Configure(frequency, fixed_prescaler);
 	RecomputePredefinedCounts(); // recompute at different frequency
 }
 
@@ -173,6 +185,11 @@ void SyncedPWMADC::SetDutyCycle(float duty)
 float SyncedPWMADC::GetCurrentDutyCycle()
 {
 	return timerSettingsCurrent.DutyCycle;
+}
+
+bool SyncedPWMADC::GetCurrentDirection()
+{
+	return timerSettingsCurrent.Direction;
 }
 
 void SyncedPWMADC::RecomputePredefinedCounts()
@@ -512,7 +529,7 @@ void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 		HAL_DMA_Abort(&obj->hDMA_ADC1);
 	}
 	__HAL_ADC_CLEAR_FLAG(&obj->hADC1, (ADC_FLAG_EOC | ADC_FLAG_EOS | ADC_FLAG_OVR));
-	HAL_DMA_Start_IT(&obj->hDMA_ADC1, (uint32_t)&obj->hADC1.Instance->DR, (uint32_t)&obj->_ADC1_buffer[0], obj->timerSettingsCurrent.samplingNumSamples*obj->timerSettingsCurrent.Triggers.numEnabledTriggers*obj->Channels.ADCnumChannels[0]);
+	HAL_DMA_Start_IT(&obj->hDMA_ADC1, (uint32_t)&obj->hADC1.Instance->DR, (uint32_t)&obj->_ADC1_buffer[0], obj->timerSettingsCurrent.samplingAveragingNumSamples*obj->timerSettingsCurrent.Triggers.numEnabledTriggers*obj->Channels.ADCnumChannels[0]);
 	LL_ADC_REG_StartConversion(obj->hADC1.Instance);
 	obj->_DMA_ADC1_ongoing = 1;
 
@@ -521,7 +538,7 @@ void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 		HAL_DMA_Abort(&obj->hDMA_ADC2);
 	}
 	__HAL_ADC_CLEAR_FLAG(&obj->hADC2, (ADC_FLAG_EOC | ADC_FLAG_EOS | ADC_FLAG_OVR));
-	HAL_DMA_Start_IT(&obj->hDMA_ADC2, (uint32_t)&obj->hADC2.Instance->DR, (uint32_t)&obj->_ADC2_buffer[0], obj->timerSettingsCurrent.samplingNumSamples*obj->timerSettingsCurrent.Triggers.numEnabledTriggers*obj->Channels.ADCnumChannels[1]);
+	HAL_DMA_Start_IT(&obj->hDMA_ADC2, (uint32_t)&obj->hADC2.Instance->DR, (uint32_t)&obj->_ADC2_buffer[0], obj->timerSettingsCurrent.samplingAveragingNumSamples*obj->timerSettingsCurrent.Triggers.numEnabledTriggers*obj->Channels.ADCnumChannels[1]);
 	LL_ADC_REG_StartConversion(obj->hADC2.Instance);
 	obj->_DMA_ADC2_ongoing = 1;
 
@@ -559,8 +576,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 }
 
 
-#pragma GCC push_options
-#pragma GCC optimize ("O3")
+//#pragma GCC push_options
+//#pragma GCC optimize ("O3")
 void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 {
 	if (!obj) return;
@@ -591,7 +608,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 #endif
 
-		if (obj->timerSettingsNext.InvalidateSamples == 0)
+		if (obj->timerSettingsCurrent.InvalidateSamples == 0 && obj->timerSettingsNext.InvalidateSamples == 0)
 		{
 			obj->Samples.Vref.UpdatedON = false;
 			obj->Samples.Vref.UpdatedOFF = false;
@@ -619,26 +636,26 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 					obj->Samples.Vref.ValueON = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
-						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
 						obj->VrefON[i] = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx];
 						obj->Samples.Vref.ValueON += obj->VrefON[i];
 					}
-					obj->Samples.Vref.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
+					obj->Samples.Vref.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 					//obj->Samples.Vref.ValueON = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc];
 				}
 
 				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
 					obj->Samples.Vref.ValueOFF = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
-						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
 						obj->VrefOFF[i] = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx];
 						obj->Samples.Vref.ValueOFF += obj->VrefOFF[i];
 					}
-					obj->Samples.Vref.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
+					obj->Samples.Vref.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 					//obj->Samples.Vref.ValueOFF = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc];
 				}
 			}
@@ -660,26 +677,26 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 						obj->Samples.CurrentSense.ValueON = 0;
 						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
-							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
 							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
 						}
-						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
+						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
-							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueON - obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
+							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueON + obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
 					}
 					if (obj->Samples.CurrentSense.UpdatedOFF) {
 						obj->Samples.CurrentSense.ValueOFF = 0;
 						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
-							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
 							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
 						}
-						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
+						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
-							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueOFF - obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
+							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE1.Scale * (obj->Samples.CurrentSense.ValueOFF + obj->ChannelCalibrations.CurrentSense.VSENSE1.Offset);
 					}
 				}
 			} else { // Backward
@@ -699,26 +716,26 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 						obj->Samples.CurrentSense.ValueON = 0;
 						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
-							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
 							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
 						}
-						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
+						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
-							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueON - obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
+							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueON + obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
 					}
 					if (obj->Samples.CurrentSense.UpdatedOFF) {
 						obj->Samples.CurrentSense.ValueOFF = 0;
 						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
-							i < obj->timerSettingsCurrent.samplingNumSamples;
+							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
 							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
 						}
-						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
+						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
-							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueOFF - obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
+							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueOFF + obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
 					}
 				}
 			}
@@ -741,17 +758,17 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
 							obj->Samples.Bemf.Value = 0;
 							for (uint16_t i = 0, bufIdx = obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
-								i < obj->timerSettingsCurrent.samplingNumSamples;
+								i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 								i++, bufIdx += bufSkip)
 							{
 								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
 							}
-							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingNumSamples;
+							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							if (obj->ChannelCalibrations.Bemf.Enabled) {
 								if (obj->timerSettingsCurrent.BemfHighRange)
-									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Offset);
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Scale * (obj->Samples.Bemf.Value + obj->ChannelCalibrations.Bemf.BEMF3.HighRange.Offset);
 								else
-									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Offset);
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Scale * (obj->Samples.Bemf.Value + obj->ChannelCalibrations.Bemf.BEMF3.LowRange.Offset);
 							}
 						}
 					}
@@ -772,17 +789,17 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
 							obj->Samples.Bemf.Value = 0;
 							for (uint16_t i = 0, bufIdx = obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
-								i < obj->timerSettingsCurrent.samplingNumSamples;
+								i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 								i++, bufIdx += bufSkip)
 							{
 								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
 							}
-							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingNumSamples;
+							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							if (obj->ChannelCalibrations.Bemf.Enabled) {
 								if (obj->timerSettingsCurrent.BemfHighRange)
-									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Offset);
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Scale * (obj->Samples.Bemf.Value + obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Offset);
 								else
-									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Scale * (obj->Samples.Bemf.Value - obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Offset);
+									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Scale * (obj->Samples.Bemf.Value + obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Offset);
 							}
 						}
 					}
@@ -804,27 +821,27 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
 					obj->Samples.Vbus.ValueON = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
-						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
 						obj->Samples.Vbus.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
 					}
-					obj->Samples.Vbus.ValueON /= obj->timerSettingsCurrent.samplingNumSamples;
+					obj->Samples.Vbus.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 					if (obj->ChannelCalibrations.Vbus.Enabled)
-						obj->Samples.Vbus.ValueON = obj->ChannelCalibrations.Vbus.VBUS.Scale * (obj->Samples.Vbus.ValueON - obj->ChannelCalibrations.Vbus.VBUS.Offset);
+						obj->Samples.Vbus.ValueON = obj->ChannelCalibrations.Vbus.VBUS.Scale * (obj->Samples.Vbus.ValueON + obj->ChannelCalibrations.Vbus.VBUS.Offset);
 				}
 
 				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
 					obj->Samples.Vbus.ValueOFF = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
-						i < obj->timerSettingsCurrent.samplingNumSamples;
+						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
 						obj->Samples.Vbus.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
 					}
-					obj->Samples.Vbus.ValueOFF /= obj->timerSettingsCurrent.samplingNumSamples;
+					obj->Samples.Vbus.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 					if (obj->ChannelCalibrations.Vbus.Enabled)
-						obj->Samples.Vbus.ValueOFF = obj->ChannelCalibrations.Vbus.VBUS.Scale * (obj->Samples.Vbus.ValueOFF - obj->ChannelCalibrations.Vbus.VBUS.Offset);
+						obj->Samples.Vbus.ValueOFF = obj->ChannelCalibrations.Vbus.VBUS.Scale * (obj->Samples.Vbus.ValueOFF + obj->ChannelCalibrations.Vbus.VBUS.Offset);
 				}
 			}
 
@@ -833,11 +850,6 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				obj->Samples.Encoder.Timestamp = timestamp;
 				obj->Samples.Encoder.Updated = true;
 				obj->Samples.Encoder.Value = obj->_encoder->Get();
-			}
-
-			if (obj->timerSettingsCurrent.BemfAlternateRange) {
-				obj->timerSettingsCurrent.BemfHighRange = !obj->timerSettingsCurrent.BemfHighRange;
-				obj->EnableBemfVoltageDivider(obj->timerSettingsCurrent.BemfHighRange); // enable voltage divider in high-range mode
 			}
 
 #ifdef USE_FREERTOS
@@ -854,8 +866,10 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 			if (obj->Samples.CurrentSense.UpdatedOFF)
 				CombinedSample.Current.OFF = obj->Samples.CurrentSense.ValueOFF;
 
-			if (obj->Samples.Bemf.Updated)
+			if (obj->Samples.Bemf.Updated) {
 				CombinedSample.Bemf = obj->Samples.Bemf.Value;
+				CombinedSample.BemfHighRange = obj->timerSettingsCurrent.BemfHighRange;
+			}
 
 			if (obj->Samples.Vbus.UpdatedON)
 				CombinedSample.VbusON = obj->Samples.Vbus.ValueON;
@@ -866,6 +880,9 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 
 			if (uxQueueSpacesAvailableFromISR(obj->SampleQueue) > 0) { // check for space in queue
 				xQueueSendFromISR(obj->SampleQueue, (void *)&CombinedSample, &xHigherPriorityTaskWoken);
+
+				if (obj->_sampleAddedToQueue)
+					xSemaphoreGiveFromISR( obj->_sampleAddedToQueue, &xHigherPriorityTaskWoken );
 			} else {
 				obj->_missedSamples++;
 			}
@@ -875,8 +892,36 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 #else
 			_sampleAvailable = true;
 #endif
-		} else {
-			obj->timerSettingsNext.InvalidateSamples--;
+
+			if (obj->timerSettingsCurrent.BemfAlternateRange) {
+				obj->timerSettingsCurrent.BemfHighRange = !obj->timerSettingsCurrent.BemfHighRange;
+				obj->timerSettingsNext.BemfHighRange = obj->timerSettingsCurrent.BemfHighRange;
+				obj->EnableBemfVoltageDivider(obj->timerSettingsCurrent.BemfHighRange); // enable voltage divider in high-range mode
+			}
+			else if (obj->timerSettingsCurrent.BemfAutoRange) {
+				// Make hysteresis for changing from high-to-low and low-to-high range
+				if (obj->Samples.Bemf.Updated) {
+					if (!obj->timerSettingsCurrent.BemfHighRange && obj->Samples.Bemf.Value >= obj->BEMF_SWITCH_TO_HIGH_RANGE_HYSTERESIS_THRESHOLD) {
+						obj->timerSettingsCurrent.BemfHighRange = true;
+						obj->timerSettingsNext.BemfHighRange = obj->timerSettingsCurrent.BemfHighRange;
+						obj->EnableBemfVoltageDivider(obj->timerSettingsCurrent.BemfHighRange); // enable voltage divider in high-range mode
+					}
+					else if (obj->timerSettingsCurrent.BemfHighRange && obj->Samples.Bemf.Value <= obj->BEMF_SWITCH_TO_LOW_RANGE_HYSTERESIS_THRESHOLD) {
+						obj->timerSettingsCurrent.BemfHighRange = false;
+						obj->timerSettingsNext.BemfHighRange = obj->timerSettingsCurrent.BemfHighRange;
+						obj->EnableBemfVoltageDivider(obj->timerSettingsCurrent.BemfHighRange); // enable voltage divider in high-range mode
+					}
+				}
+			}
+		}
+		else {
+			// Clear DMA buffer
+			memset(obj->_ADC1_buffer, 0, ADC_DMA_HALFWORD_MAX_BUFFER_SIZE);
+			memset(obj->_ADC2_buffer, 0, ADC_DMA_HALFWORD_MAX_BUFFER_SIZE);
+			if (obj->timerSettingsCurrent.InvalidateSamples)
+				obj->timerSettingsCurrent.InvalidateSamples--;
+			if (obj->timerSettingsNext.InvalidateSamples)
+				obj->timerSettingsNext.InvalidateSamples--;
 		}
 
 		// Latch timer settings since we now start the next period
@@ -905,7 +950,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 #endif
 	}
 }
-#pragma GCC pop_options
+//#pragma GCC pop_options
 
 void SyncedPWMADC::Debug_SetSamplingPin(IO * pin)
 {
@@ -929,6 +974,14 @@ void SyncedPWMADC::WaitForNewSample()
 		osDelay(1);
 	}
 }
+
+void SyncedPWMADC::WaitForNewQueuedSample()
+{
+#ifdef USE_FREERTOS
+	xSemaphoreTake( _sampleAddedToQueue, ( TickType_t ) portMAX_DELAY );
+#endif
+}
+
 
 SyncedPWMADC::SampleFloat SyncedPWMADC::GetCurrent()
 {
@@ -984,7 +1037,7 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
 
 		CurrentSenseOffset1 /= SampleCount;
 	}
-	ChannelCalibrations.CurrentSense.VSENSE1.Offset = CurrentSenseOffset1;
+	ChannelCalibrations.CurrentSense.VSENSE1.Offset = -CurrentSenseOffset1;
 
 	// Sample current sense in Backward direction (VSENSE3)
 	{
@@ -1008,7 +1061,7 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
 		}
 		CurrentSenseOffset3 /= SampleCount;
 	}
+	ChannelCalibrations.CurrentSense.VSENSE3.Offset = -CurrentSenseOffset3;
 
 	ChannelCalibrations.CurrentSense.Enabled = CalibrationEnabled;
-	ChannelCalibrations.CurrentSense.VSENSE3.Offset = CurrentSenseOffset3;
 }

@@ -191,7 +191,7 @@ void SyncedPWMADC::InitTimer(uint32_t frequency)
 // For frequency and duty cycle changes it is however recommended to use the according functions:
 //  - SetPWMFrequency(uint32_t frequency)
 //  - void SetDutyCycle(float duty)
-void SyncedPWMADC::Timer_Configure(uint32_t frequency)
+void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
 {
 	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
 
@@ -211,11 +211,18 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 	// fPWM = fTIM / ((ARR+1)*(PSC+1))
 	// Start with no prescaler: _PWM_prescaler = PSC+1 = 1
 	uint32_t ARR = 0x10000;
-	timerSettingsNext.Prescaler = 0;
-	while (ARR > 0xFFFF) {
-		timerSettingsNext.Prescaler++;
-		// Compute ARR and check value
+	if (!fixed_prescaler) {
+		timerSettingsNext.Prescaler = 0;
+		while (ARR > 0xFFFF) {
+			timerSettingsNext.Prescaler++;
+			// Compute ARR and check value
+			ARR = TimerClock / (timerSettingsNext.Frequency * timerSettingsNext.Prescaler) - 1;
+		}
+	} else {
 		ARR = TimerClock / (timerSettingsNext.Frequency * timerSettingsNext.Prescaler) - 1;
+		if (ARR > 0xFFFF) {
+			return; // error, not possible with this prescaler
+		}
 	}
 	hTimer.Init.Period = ARR;
 	hTimer.Init.Prescaler = timerSettingsNext.Prescaler - 1;
@@ -242,7 +249,13 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency)
 			__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
 		}
 
-		TIM_Base_SetConfig(hTimer.Instance, &hTimer.Init);
+		if (!fixed_prescaler) {
+			//TIM_Base_SetConfig(hTimer.Instance, &hTimer.Init);
+			__HAL_TIM_SET_PRESCALER(&hTimer, hTimer.Init.Prescaler);
+			__HAL_TIM_SET_AUTORELOAD(&hTimer, hTimer.Init.Period);
+		} else {
+			__HAL_TIM_SET_AUTORELOAD(&hTimer, hTimer.Init.Period);
+		}
 	}
 
 	timerSettingsNext.InvalidateSamples = 1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
@@ -369,12 +382,14 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 
 	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
 
-	if (samplingInterval < timerSettingsNext.samplingNumSamples) {
+	if (samplingInterval < timerSettingsNext.samplingAveragingNumSamples) {
 		// Shrink the averaging period to match the new sampling interval
 		if (samplingInterval <= MAX_SAMPLING_NUM_SAMPLES)
-			timerSettingsNext.samplingNumSamples = samplingInterval-1;
+			timerSettingsNext.samplingAveragingNumSamples = samplingInterval-1;
 		else
-			timerSettingsNext.samplingNumSamples = MAX_SAMPLING_NUM_SAMPLES;
+			timerSettingsNext.samplingAveragingNumSamples = MAX_SAMPLING_NUM_SAMPLES;
+		timerSettingsNext.InvalidateSamples = 1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
+		timerSettingsNext.Changed = true;
 	}
 
 	timerSettingsNext.samplingInterval = samplingInterval;
@@ -394,7 +409,7 @@ void SyncedPWMADC::SetNumberOfAveragingSamples(uint16_t numSamples)
 		numSamples * timerSettingsNext.Triggers.numEnabledTriggers * Channels.ADCnumChannels[1] <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE)
 	{
 		xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
-		timerSettingsNext.samplingNumSamples = numSamples; // capture samples from one PWM period after every interval (hence every PWM period)
+		timerSettingsNext.samplingAveragingNumSamples = numSamples; // capture samples from one PWM period after every interval (hence every PWM period)
 		timerSettingsNext.InvalidateSamples = 1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
 		timerSettingsNext.Changed = true;
 		xSemaphoreGive( _timerSettingsMutex ); // unlock settings
