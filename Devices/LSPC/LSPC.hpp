@@ -14,7 +14,7 @@
 #include "MessageTypes.h"
 
 #define LSPC_MAXIMUM_PACKAGE_LENGTH					250
-#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH				100   // maximum 100 asynchronous packages in queue
+#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH				50   // maximum 50 asynchronous packages in queue
 #define LSPC_RX_PROCESSING_THREAD_STACK_SIZE		256
 #define LSPC_TX_TRANSMITTER_THREAD_STACK_SIZE		(LSPC_MAXIMUM_PACKAGE_LENGTH)
 
@@ -101,6 +101,7 @@ public:
 	  memcpy(package.payloadPtr->data(), payload, payloadLength);
 	  if (xQueueSend(_TXqueue, (void *)&package, (TickType_t) 0) != pdTRUE) {
 		  delete(package.payloadPtr); // could not add package to queue, probably because it is full
+		  return false;
 	  }
 
 	  return true;
@@ -165,7 +166,6 @@ public:
 private:
   TaskHandle_t _processingTaskHandle;
   TaskHandle_t _transmitterTaskHandle;
-  SemaphoreHandle_t _newTransmitDataSemaphore;
   QueueHandle_t _TXqueue;
 
 };

@@ -89,6 +89,16 @@ SyncedPWMADC::SyncedPWMADC(uint32_t frequency, float maxDuty)
 #endif
 
 #ifdef USE_FREERTOS
+	_latestSampleMutex = xSemaphoreCreateBinary();
+	if (_latestSampleMutex == NULL) {
+		ERROR("Could not create ADC-PWM Latest sample mutex");
+		return;
+	}
+	vQueueAddToRegistry(_latestSampleMutex, "ADC-PWM Latest sample");
+	xSemaphoreGive( _latestSampleMutex ); // give the semaphore the first time
+#endif
+
+#ifdef USE_FREERTOS
 #if SAMPLE_QUEUE_SIZE > 0
 	SampleQueue = xQueueCreate( SAMPLE_QUEUE_SIZE, sizeof(CombinedSample_t) );
 	if (SampleQueue == NULL) {
@@ -192,6 +202,17 @@ bool SyncedPWMADC::GetCurrentDirection()
 	return timerSettingsCurrent.Direction;
 }
 
+SyncedPWMADC::CombinedSample_t SyncedPWMADC::GetLatestSample()
+{
+	CombinedSample_t sample;
+
+	xSemaphoreTake( _latestSampleMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+	sample = _latestSample;
+	xSemaphoreGive( _latestSampleMutex ); // unlock settings
+
+	return sample;
+}
+
 void SyncedPWMADC::RecomputePredefinedCounts()
 {
 	const uint32_t ADC_SAMPLE_TIME_US = _ADC_SampleTime_Total_us + ADC_SAMPLE_TIME_OVERHEAD_US;
@@ -277,7 +298,6 @@ void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
 		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
 
-	timerSettingsNext.TimerMax = End_Count;
 	timerSettingsNext.DutyCycleLocation = Duty_Count;
 	timerSettingsNext.Triggers.numEnabledTriggers = 0;
 	if (sampleLocation1 > 0) {
@@ -369,7 +389,6 @@ void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
 		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
 
-	timerSettingsNext.TimerMax = End_Count;
 	timerSettingsNext.DutyCycleLocation = Duty_Count;
 	timerSettingsNext.Triggers.numEnabledTriggers = 0;
 	if (sampleLocation1 > 0) {
@@ -470,7 +489,6 @@ void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
 		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
 	}
 
-	timerSettingsNext.TimerMax = End_Count;
 	timerSettingsNext.DutyCycleLocation = Duty_Count;
 	timerSettingsNext.Triggers.numEnabledTriggers = 0;
 	if (sampleLocation1 > 0) {
@@ -499,6 +517,192 @@ void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
 	}
 }
 
+// Modifies only the sampling location
+void SyncedPWMADC::SetCustomSamplingLocations(float samplingLocation1, float samplingLocation2)
+{
+	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+
+	const uint16_t& End_Count = PredefinedCounts.End;
+	const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
+	const uint16_t& Sample_Count = PredefinedCounts.Sample;
+	// Duty cycle is defined as:
+	// Duty Cycle = (CCR+1) / (ARR+1)
+	// So 100% duty cycle is achieved by setting CCR=ARR
+	//const uint16_t Duty_Count = (uint16_t)(roundf( fabsf(timerSettingsNext.DutyCycle)*End_Count )); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+	// Sanity check
+	if (End_Count <= Sample_Count) {
+		ERROR("PWM frequency is too fast for ADC sampling at the configured ADC sample time");
+	}
+	if (End_Count <= Ripple_Count) {
+		ERROR("PWM frequency is faster than the expected ripple");
+	}
+
+	// Put the sample location as close to the end as possible
+	uint16_t sampleLocation1 = (uint16_t)(roundf(samplingLocation1 * End_Count));
+	uint16_t sampleLocation2 = (uint16_t)(roundf(samplingLocation2 * End_Count));
+
+	if (sampleLocation1 > sampleLocation2) {
+		// Swap the locations
+		uint16_t tmp = sampleLocation2;
+		sampleLocation2 = sampleLocation1;
+		sampleLocation1 = tmp;
+	}
+
+	// Check that none of the samples goes beyond the period
+	if ((sampleLocation1 + Sample_Count) > End_Count) {
+		sampleLocation1 = 0;
+	}
+	if ((sampleLocation2 + Sample_Count) > End_Count) {
+		sampleLocation2 = 0;
+	}
+
+	// Ensure that the sample locations are not too close
+	if (sampleLocation2 < (sampleLocation1 + Sample_Count)) {
+		sampleLocation2 = 0; // not possible - samples are too close
+	}
+
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, sampleLocation2);
+
+	if (DEBUG_MODE_ENABLED) {
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, sampleLocation1);
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
+	}
+
+	timerSettingsNext.Triggers.numEnabledTriggers = 0;
+	if (sampleLocation1 > 0) {
+		timerSettingsNext.Triggers.ON.Enabled = true;
+		timerSettingsNext.Triggers.ON.Index = 0;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.ON.Enabled = false;
+	}
+	if (sampleLocation2 > 0) {
+		timerSettingsNext.Triggers.OFF.Enabled = true;
+		timerSettingsNext.Triggers.OFF.Index = timerSettingsNext.Triggers.numEnabledTriggers;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.OFF.Enabled = false;
+	}
+	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
+	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
+	timerSettingsNext.Changed = true;
+
+	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
+
+	// When we sample in every cycle the DMA is not triggered periodically but only configured and enabled once. So we need to reconfigure the DMA if we changed the number of triggers
+	if (SAMPLE_IN_EVERY_PWM_CYCLE && timerSettingsNext.Triggers.numEnabledTriggers != timerSettingsCurrent.Triggers.numEnabledTriggers) {
+		RestartSampling();
+	}
+}
+
+
+void SyncedPWMADC::SetDutyCycle_CustomSampling(float dutyPct, float samplingLocation1, float samplingLocation2)
+{
+	xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
+
+	timerSettingsNext.DutyCycle = dutyPct;
+
+	if (timerSettingsNext.DutyCycle > _PWM_maxDuty)
+		timerSettingsNext.DutyCycle = _PWM_maxDuty;
+	else if (timerSettingsNext.DutyCycle < -_PWM_maxDuty)
+		timerSettingsNext.DutyCycle = -_PWM_maxDuty;
+
+	if (timerSettingsNext.DutyCycle > 0)
+		timerSettingsNext.Direction = true;
+	else if (timerSettingsNext.DutyCycle < 0)
+		timerSettingsNext.Direction = false;
+
+	const uint16_t& End_Count = PredefinedCounts.End;
+	const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
+	const uint16_t& Sample_Count = PredefinedCounts.Sample;
+	// Duty cycle is defined as:
+	// Duty Cycle = (CCR+1) / (ARR+1)
+	// So 100% duty cycle is achieved by setting CCR=ARR
+	const uint16_t Duty_Count = (uint16_t)(roundf( fabsf(timerSettingsNext.DutyCycle)*End_Count )); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+	// Sanity check
+	if (End_Count <= Sample_Count) {
+		ERROR("PWM frequency is too fast for ADC sampling at the configured ADC sample time");
+	}
+	if (End_Count <= Ripple_Count) {
+		ERROR("PWM frequency is faster than the expected ripple");
+	}
+
+	// Put the sample location as close to the end as possible
+	uint16_t sampleLocation1 = (uint16_t)(roundf(samplingLocation1 * End_Count));
+	uint16_t sampleLocation2 = (uint16_t)(roundf(samplingLocation2 * End_Count));
+
+	if (sampleLocation1 > sampleLocation2) {
+		// Swap the locations
+		uint16_t tmp = sampleLocation2;
+		sampleLocation2 = sampleLocation1;
+		sampleLocation1 = tmp;
+	}
+
+	// Check that none of the samples goes beyond the period
+	if ((sampleLocation1 + Sample_Count) > End_Count) {
+		sampleLocation1 = 0;
+	}
+	if ((sampleLocation2 + Sample_Count) > End_Count) {
+		sampleLocation2 = 0;
+	}
+
+	// Ensure that the sample locations are not too close
+	if (sampleLocation2 < (sampleLocation1 + Sample_Count)) {
+		sampleLocation2 = 0; // not possible - samples are too close
+	}
+
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
+	__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, sampleLocation2);
+
+	if (DEBUG_MODE_ENABLED) {
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_2, sampleLocation1);
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_4, sampleLocation2);
+	}
+
+	if (timerSettingsNext.Direction) {
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count); // control the duty cycle with the other side of the motor
+	} else {
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count); // control the duty cycle with the other side of the motor
+		__HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+	}
+
+	if (_operatingMode == COAST) {
+		Timer_ConfigureCoastMode(timerSettingsNext.Direction);
+	}
+
+	timerSettingsNext.DutyCycleLocation = Duty_Count;
+	timerSettingsNext.Triggers.numEnabledTriggers = 0;
+	if (sampleLocation1 > 0) {
+		timerSettingsNext.Triggers.ON.Enabled = true;
+		timerSettingsNext.Triggers.ON.Index = 0;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.ON.Enabled = false;
+	}
+	if (sampleLocation2 > 0) {
+		timerSettingsNext.Triggers.OFF.Enabled = true;
+		timerSettingsNext.Triggers.OFF.Index = timerSettingsNext.Triggers.numEnabledTriggers;
+		timerSettingsNext.Triggers.numEnabledTriggers++;
+	} else {
+		timerSettingsNext.Triggers.OFF.Enabled = false;
+	}
+	timerSettingsNext.Triggers.ON.Location = sampleLocation1;
+	timerSettingsNext.Triggers.OFF.Location = sampleLocation2;
+	timerSettingsNext.Changed = true;
+
+	xSemaphoreGive( _timerSettingsMutex ); // unlock settings
+
+	// When we sample in every cycle the DMA is not triggered periodically but only configured and enabled once. So we need to reconfigure the DMA if we changed the number of triggers
+	if (SAMPLE_IN_EVERY_PWM_CYCLE && timerSettingsNext.Triggers.numEnabledTriggers != timerSettingsCurrent.Triggers.numEnabledTriggers) {
+		RestartSampling();
+	}
+}
+
+
 void SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC * obj)
 {
 	//if (!obj) return; // currently commented out for speed
@@ -515,11 +719,44 @@ void SyncedPWMADC::TimerCaptureCallback(SyncedPWMADC * obj)
 	}
 }
 
+void SyncedPWMADC::LatchTimerSettings(SyncedPWMADC * obj)
+{
+#ifdef USE_FREERTOS
+		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+#endif
+
+	if (obj->timerSettingsNext.Changed) {
+#ifdef USE_FREERTOS
+		if (xSemaphoreTakeFromISR( obj->_timerSettingsMutex, &xHigherPriorityTaskWoken )) {
+#endif
+			obj->timerSettingsNext.Changed = false;
+
+			// Apply the changed timer settings that has to be latched
+			obj->hTimer.Instance->RCR = obj->timerSettingsNext.samplingInterval - 1;
+
+			if (obj->timerSettingsNext.BemfHighRange != obj->timerSettingsCurrent.BemfHighRange) {
+				obj->EnableBemfVoltageDivider(obj->timerSettingsNext.BemfHighRange); // enable voltage divider in high-range mode
+			}
+
+			obj->timerSettingsCurrent = obj->timerSettingsNext;
+#ifdef USE_FREERTOS
+			xSemaphoreGiveFromISR( obj->_timerSettingsMutex, &xHigherPriorityTaskWoken );
+		}
+#endif
+
+#ifdef USE_FREERTOS
+		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#endif
+	}
+}
+
 void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 {
 	if (!obj) return;
 
 	/* Called by the Timer Update interrupt vector to trigger/initiate a DMA sample */
+	// Latch timer settings since we now start the next period
+	LatchTimerSettings(obj);
 
 	if (obj->_DMA_ADC1_ongoing || obj->_DMA_ADC2_ongoing) return; // Previous conversion not finished yet
 	if (obj->hDMA_ADC1.State != HAL_DMA_STATE_READY || obj->hDMA_ADC2.State != HAL_DMA_STATE_READY) return;
@@ -576,15 +813,11 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 }
 
 
-//#pragma GCC push_options
-//#pragma GCC optimize ("O3")
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
 void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 {
 	if (!obj) return;
-
-	if (obj->samplingPin) {
-		obj->samplingPin->Low();
-	}
 
 	if (!obj->SAMPLE_IN_EVERY_PWM_CYCLE) {
 		if (ADC == 1) {
@@ -594,6 +827,9 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 		else if (ADC == 2) {
 			obj->_DMA_ADC2_ongoing = 0;
 			LL_ADC_REG_StopConversion(obj->hADC2.Instance);
+		}
+		if (obj->samplingPin) {
+			obj->samplingPin->Low();
 		}
 	}
 
@@ -607,6 +843,10 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 #ifdef USE_FREERTOS
 		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 #endif
+
+		if (obj->samplingPin) {
+			obj->samplingPin->High();
+		}
 
 		if (obj->timerSettingsCurrent.InvalidateSamples == 0 && obj->timerSettingsNext.InvalidateSamples == 0)
 		{
@@ -633,26 +873,26 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				obj->Samples.Vref.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
 				obj->Samples.Vref.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
 
-				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+				if (obj->Samples.Vref.UpdatedON) {
 					obj->Samples.Vref.ValueON = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
 						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
-						obj->VrefON[i] = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx];
+						obj->VrefON[i] = (0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx]) / ADC_MAX_VALUE;
 						obj->Samples.Vref.ValueON += obj->VrefON[i];
 					}
 					obj->Samples.Vref.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 					//obj->Samples.Vref.ValueON = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc];
 				}
 
-				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+				if (obj->Samples.Vref.UpdatedOFF) {
 					obj->Samples.Vref.ValueOFF = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VREF.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
 						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
-						obj->VrefOFF[i] = 0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx];
+						obj->VrefOFF[i] = (0.001f * (float)((uint32_t)(*VREFINT_CAL_ADDR) * VREFINT_CAL_VREF) / (float)buf[bufIdx]) / ADC_MAX_VALUE;
 						obj->Samples.Vref.ValueOFF += obj->VrefOFF[i];
 					}
 					obj->Samples.Vref.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
@@ -674,13 +914,13 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					obj->Samples.CurrentSense.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
 					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & (obj->_operatingMode == BRAKE)); // Current sense can only be sampled during OFF-period in BRAKE mode
 
-					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+					if (obj->Samples.CurrentSense.UpdatedON) {
 						obj->Samples.CurrentSense.ValueON = 0;
 						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE1.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
 							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
-							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
+							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx];
 						}
 						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
@@ -692,7 +932,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
-							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx];
 						}
 						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
@@ -713,13 +953,13 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 					obj->Samples.CurrentSense.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
 					obj->Samples.CurrentSense.UpdatedOFF = (obj->timerSettingsCurrent.Triggers.OFF.Enabled & (obj->_operatingMode == BRAKE)); // Current sense can only be sampled during OFF-period in BRAKE mode
 
-					if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+					if (obj->Samples.CurrentSense.UpdatedON) {
 						obj->Samples.CurrentSense.ValueON = 0;
 						for (uint16_t i = 0, bufIdx = obj->Channels.VSENSE3.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
 							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
-							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
+							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx];
 						}
 						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
@@ -731,7 +971,7 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 							i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							i++, bufIdx += bufSkip)
 						{
-							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx];
 						}
 						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						if (obj->ChannelCalibrations.CurrentSense.Enabled)
@@ -755,13 +995,13 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 						}
 						obj->Samples.Bemf.Timestamp = timestamp;
 						obj->Samples.Bemf.Updated = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
-						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+						if (obj->Samples.Bemf.Updated) {
 							obj->Samples.Bemf.Value = 0;
 							for (uint16_t i = 0, bufIdx = obj->Channels.BEMF3.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
 								i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 								i++, bufIdx += bufSkip)
 							{
-								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx];
 							}
 							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							if (obj->ChannelCalibrations.Bemf.Enabled) {
@@ -786,13 +1026,13 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 						}
 						obj->Samples.Bemf.Timestamp = timestamp;
 						obj->Samples.Bemf.Updated = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
-						if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+						if (obj->Samples.Bemf.Updated) {
 							obj->Samples.Bemf.Value = 0;
 							for (uint16_t i = 0, bufIdx = obj->Channels.BEMF1.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
 								i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 								i++, bufIdx += bufSkip)
 							{
-								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+								obj->Samples.Bemf.Value += obj->VrefOFF[i] * (float)buf[bufIdx];
 							}
 							obj->Samples.Bemf.Value /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 							if (obj->ChannelCalibrations.Bemf.Enabled) {
@@ -818,26 +1058,26 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				obj->Samples.Vbus.Timestamp = timestamp;
 				obj->Samples.Vbus.UpdatedON = obj->timerSettingsCurrent.Triggers.ON.Enabled;
 				obj->Samples.Vbus.UpdatedOFF = obj->timerSettingsCurrent.Triggers.OFF.Enabled;
-				if (obj->timerSettingsCurrent.Triggers.ON.Enabled) {
+				if (obj->Samples.Vbus.UpdatedON) {
 					obj->Samples.Vbus.ValueON = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.ON.Index*nc;
 						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
-						obj->Samples.Vbus.ValueON += obj->VrefON[i] * (float)buf[bufIdx] / 4096.f;
+						obj->Samples.Vbus.ValueON += obj->VrefON[i] * (float)buf[bufIdx];
 					}
 					obj->Samples.Vbus.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 					if (obj->ChannelCalibrations.Vbus.Enabled)
 						obj->Samples.Vbus.ValueON = obj->ChannelCalibrations.Vbus.VBUS.Scale * (obj->Samples.Vbus.ValueON + obj->ChannelCalibrations.Vbus.VBUS.Offset);
 				}
 
-				if (obj->timerSettingsCurrent.Triggers.OFF.Enabled) {
+				if (obj->Samples.Vbus.UpdatedOFF) {
 					obj->Samples.Vbus.ValueOFF = 0;
 					for (uint16_t i = 0, bufIdx = obj->Channels.VBUS.Index + obj->timerSettingsCurrent.Triggers.OFF.Index*nc;
 						i < obj->timerSettingsCurrent.samplingAveragingNumSamples;
 						i++, bufIdx += bufSkip)
 					{
-						obj->Samples.Vbus.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx] / 4096.f;
+						obj->Samples.Vbus.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx];
 					}
 					obj->Samples.Vbus.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
 					if (obj->ChannelCalibrations.Vbus.Enabled)
@@ -887,6 +1127,13 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				obj->_missedSamples++;
 			}
 
+			if (obj->_latestSampleMutex) {
+				if (xSemaphoreTakeFromISR( obj->_latestSampleMutex, &xHigherPriorityTaskWoken )) {
+					obj->_latestSample = CombinedSample;
+					xSemaphoreGiveFromISR( obj->_latestSampleMutex, &xHigherPriorityTaskWoken );
+				}
+			}
+
 			if (obj->_sampleAvailable)
 				xSemaphoreGiveFromISR( obj->_sampleAvailable, &xHigherPriorityTaskWoken );
 #else
@@ -924,33 +1171,23 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 				obj->timerSettingsNext.InvalidateSamples--;
 		}
 
-		// Latch timer settings since we now start the next period
-		if (obj->timerSettingsNext.Changed) {
-#ifdef USE_FREERTOS
-			if (xSemaphoreTakeFromISR( obj->_timerSettingsMutex, &xHigherPriorityTaskWoken )) {
-#endif
-				obj->timerSettingsNext.Changed = false;
-
-				// Apply the changed timer settings that has to be latched
-				obj->hTimer.Instance->RCR = obj->timerSettingsNext.samplingInterval - 1;
-
-				if (obj->timerSettingsNext.BemfHighRange != obj->timerSettingsCurrent.BemfHighRange) {
-					obj->EnableBemfVoltageDivider(obj->timerSettingsNext.BemfHighRange); // enable voltage divider in high-range mode
-				}
-
-				obj->timerSettingsCurrent = obj->timerSettingsNext;
-#ifdef USE_FREERTOS
-				xSemaphoreGiveFromISR( obj->_timerSettingsMutex, &xHigherPriorityTaskWoken );
-			}
-#endif
+		if (obj->SAMPLE_IN_EVERY_PWM_CYCLE) {
+			// When sampling in every cycle the TriggerSample is not called, so we need to latch the timer settings here
+			LatchTimerSettings(obj);
 		}
+
+		if (obj->samplingPin) {
+			obj->samplingPin->Low();
+		}
+
+		obj->interruptComputeTimeTicks = HAL_GetHighResTick() - timestamp;
 
 #ifdef USE_FREERTOS
 		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 #endif
 	}
 }
-//#pragma GCC pop_options
+#pragma GCC pop_options
 
 void SyncedPWMADC::Debug_SetSamplingPin(IO * pin)
 {

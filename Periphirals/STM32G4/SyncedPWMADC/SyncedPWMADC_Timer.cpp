@@ -227,6 +227,8 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
 	hTimer.Init.Period = ARR;
 	hTimer.Init.Prescaler = timerSettingsNext.Prescaler - 1;
 
+	timerSettingsNext.TimerMax = ARR+1;
+
 	// Recompute actual frequency
 	timerSettingsNext.Frequency = TimerClock / ((hTimer.Init.Period+1) * timerSettingsNext.Prescaler);
 
@@ -385,7 +387,7 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 	if (samplingInterval < timerSettingsNext.samplingAveragingNumSamples) {
 		// Shrink the averaging period to match the new sampling interval
 		if (samplingInterval <= MAX_SAMPLING_NUM_SAMPLES)
-			timerSettingsNext.samplingAveragingNumSamples = samplingInterval-1;
+			timerSettingsNext.samplingAveragingNumSamples = samplingInterval-2;
 		else
 			timerSettingsNext.samplingAveragingNumSamples = MAX_SAMPLING_NUM_SAMPLES;
 		timerSettingsNext.InvalidateSamples = 1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
@@ -406,18 +408,14 @@ void SyncedPWMADC::SetNumberOfAveragingSamples(uint16_t numSamples)
 	if (numSamples > 0 &&
 		numSamples <= MAX_SAMPLING_NUM_SAMPLES &&
 		numSamples * timerSettingsNext.Triggers.numEnabledTriggers * Channels.ADCnumChannels[0] <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE &&
-		numSamples * timerSettingsNext.Triggers.numEnabledTriggers * Channels.ADCnumChannels[1] <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE)
+		numSamples * timerSettingsNext.Triggers.numEnabledTriggers * Channels.ADCnumChannels[1] <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE &&
+		(numSamples < timerSettingsNext.samplingInterval-1 || numSamples == 1)) // Sampling interval needs to be at least 2 more sample than the averaging interval (2 sample dead-time to allow sufficient time to compute/carry out the DMA sampling finished interrupt - it is especially the averaging that takes time, so if many samples are collected, averaging will consume a big amount of time)
 	{
 		xSemaphoreTake( _timerSettingsMutex, ( TickType_t ) portMAX_DELAY ); // lock settings for change
 		timerSettingsNext.samplingAveragingNumSamples = numSamples; // capture samples from one PWM period after every interval (hence every PWM period)
 		timerSettingsNext.InvalidateSamples = 1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
 		timerSettingsNext.Changed = true;
 		xSemaphoreGive( _timerSettingsMutex ); // unlock settings
-
-		if (numSamples >= timerSettingsNext.samplingInterval) {
-			// Sampling interval needs to be at least 3 sample more than the averaging interval (2 sample dead-time to allow sufficient time to compute/carry out the DMA sampling finished interrupt)
-			SetSamplingInterval(numSamples+2);
-		}
 	}
 }
 

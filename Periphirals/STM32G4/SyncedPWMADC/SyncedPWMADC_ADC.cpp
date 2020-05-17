@@ -40,12 +40,7 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PB1     ------> ADC1_IN12		[VSENSE3]
     PB12    ------> ADC1_IN11		[POTENTIOMETER]
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_2;
-    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_12;
+    GPIO_InitStruct.Pin = GPIO_PIN_12;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -60,7 +55,7 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PC4     ------> ADC2_IN5		[BEMF2]
     PB11    ------> ADC1/2_IN14		[BEMF3]
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_6|GPIO_PIN_4;
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_4;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -82,7 +77,10 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PA2     ------> OPAMP1_VOUT
     PA3     ------> OPAMP1_VINM
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
+    GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_3;
+    if (ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
+    	GPIO_InitStruct.Pin |= GPIO_PIN_2;
+    }
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -94,7 +92,7 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PA6     ------> OPAMP2_VOUT
     PA7     ------> OPAMP2_VINP
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+    GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -106,7 +104,7 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PB1     ------> OPAMP3_VOUT
     PB2     ------> OPAMP3_VINM
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2;
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_2;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -224,7 +222,32 @@ void SyncedPWMADC::InitADCs()
     hADC_Config.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
     hADC_Config.Init.DMAContinuousRequests = ENABLE;
     hADC_Config.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-    hADC_Config.Init.OversamplingMode = DISABLE;
+
+    switch (ADC_OVERSAMPLING)
+    {
+		case OVERSAMPLING_0:
+			hADC_Config.Init.OversamplingMode = DISABLE;
+			break;
+		case OVERSAMPLING_2:
+			hADC_Config.Init.OversamplingMode = ENABLE;
+			hADC_Config.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_2;
+			break;
+		case OVERSAMPLING_4:
+			hADC_Config.Init.OversamplingMode = ENABLE;
+			hADC_Config.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_4;
+			break;
+		case OVERSAMPLING_8:
+			hADC_Config.Init.OversamplingMode = ENABLE;
+			hADC_Config.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_8;
+			break;
+		case OVERSAMPLING_16:
+			hADC_Config.Init.OversamplingMode = ENABLE;
+			hADC_Config.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_16;
+			break;
+    }
+    hADC_Config.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_2;
+    hADC_Config.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
+    hADC_Config.Init.Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
 
     hADC1 = hADC_Config;
     hADC1.Instance = ADC1;
@@ -305,8 +328,41 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 	timerSettingsNext.InvalidateSamples = 1;
 
 	/* Define sample time */
-	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
-	float ADC_SampleTimeTotalCycles = 47.5 + 12.5; // Sampling cycles + Conversion cycles
+	float ADC_SampleTimeTotalCycles = 12.5f; // Sampling cycles + Conversion cycles (12.5 cycles)
+	switch (ADC_SAMPLE_TIME) {
+		case CYCLES_2_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 2.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+			break;
+		case CYCLES_6_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 6.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
+			break;
+		case CYCLES_12_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 12.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
+			break;
+		case CYCLES_24_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 24.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_24CYCLES_5;
+			break;
+		case CYCLES_47_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 47.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
+			break;
+		case CYCLES_92_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 92.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_92CYCLES_5;
+			break;
+		case CYCLES_247_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 247.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+			break;
+		case CYCLES_640_5:
+			ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 640.5f;
+			sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
+			break;
+	}
 	float ADC_SampleTime = ADC_SampleTimeTotalCycles / (float)_ADC_Clock;
 	uint16_t ADC_SampleTime_SingleChannel_us = (uint16_t)(ceilf(1000000.f * ADC_SampleTime));
 
@@ -452,8 +508,41 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 	timerSettingsNext.InvalidateSamples = 1;
 
 	/* Define sample time */
-	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
-	float ADC_SampleTimeTotalCycles = 47.5 + 12.5; // Sampling cycles + Conversion cycles
+	float ADC_SampleTimeTotalCycles = 12.5f; // Sampling cycles + Conversion cycles (12.5 cycles)
+		switch (ADC_SAMPLE_TIME) {
+			case CYCLES_2_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 2.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+				break;
+			case CYCLES_6_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 6.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
+				break;
+			case CYCLES_12_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 12.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
+				break;
+			case CYCLES_24_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 24.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_24CYCLES_5;
+				break;
+			case CYCLES_47_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 47.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
+				break;
+			case CYCLES_92_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 92.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_92CYCLES_5;
+				break;
+			case CYCLES_247_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 247.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+				break;
+			case CYCLES_640_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 640.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
+				break;
+		}
 	float ADC_SampleTime = ADC_SampleTimeTotalCycles / (float)_ADC_Clock;
 	uint16_t ADC_SampleTime_SingleChannel_us = (uint16_t)(ceilf(1000000.f * ADC_SampleTime));
 
@@ -594,8 +683,41 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
 	timerSettingsNext.InvalidateSamples = 1;
 
 	/* Define sample time */
-	sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
-	float ADC_SampleTimeTotalCycles = 47.5 + 12.5; // Sampling cycles + Conversion cycles
+	float ADC_SampleTimeTotalCycles = 12.5f; // Sampling cycles + Conversion cycles (12.5 cycles)
+		switch (ADC_SAMPLE_TIME) {
+			case CYCLES_2_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 2.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+				break;
+			case CYCLES_6_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 6.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
+				break;
+			case CYCLES_12_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 12.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
+				break;
+			case CYCLES_24_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 24.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_24CYCLES_5;
+				break;
+			case CYCLES_47_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 47.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
+				break;
+			case CYCLES_92_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 92.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_92CYCLES_5;
+				break;
+			case CYCLES_247_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 247.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
+				break;
+			case CYCLES_640_5:
+				ADC_SampleTimeTotalCycles += ADC_OVERSAMPLING * 640.5f;
+				sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
+				break;
+		}
 	float ADC_SampleTime = ADC_SampleTimeTotalCycles / (float)_ADC_Clock;
 	uint16_t ADC_SampleTime_SingleChannel_us = (uint16_t)(ceilf(1000000.f * ADC_SampleTime));
 

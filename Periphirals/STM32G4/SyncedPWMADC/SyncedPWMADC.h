@@ -35,7 +35,7 @@
  *  - Define and use NVIC priorities from Priorities.h file
  */
 
-/* Macro to get variable aligned on 32-bytes,needed for cache maintenance purpose */
+/* Macro to get variable aligned on 32-bytes */
 #if defined   (__GNUC__)        /* GNU Compiler */
   #define ALIGN_32BYTES(buf)  buf __attribute__ ((aligned (32)))
 #elif defined (__ICCARM__)    /* IAR Compiler */
@@ -47,19 +47,36 @@
 // When a DMA sampling is started/triggered it will fill up the buffer.
 // Maximum number of ADC samples the DMA buffer can hold
 // _samplingAveragingNumSamples*NUM_CHANNELS*NUM_TRIGGERS <= ADC_DMA_HALFWORD_MAX_BUFFER_SIZE
-#define MAX_SAMPLING_NUM_SAMPLES	50 // reduce this if the DMA buffer memory is taking up too much of the heap
+#define MAX_SAMPLING_NUM_SAMPLES	200 // reduce this if the DMA buffer memory is taking up too much of the available memory
 #define MAX_NUM_CHANNELS	3
 #define MAX_NUM_TRIGGERS	2
 #define ADC_DMA_HALFWORD_MAX_BUFFER_SIZE (MAX_SAMPLING_NUM_SAMPLES * MAX_NUM_CHANNELS * MAX_NUM_TRIGGERS)
 
 #define SAMPLE_QUEUE_SIZE	10
-
+#define	ADC_MAX_VALUE		4096.f // defined by the ADC resolution
 
 class SyncedPWMADC
 {
 	#include "SyncedPWMADC_Config.h"
 
 	private:
+		const enum : uint8_t {
+			CYCLES_2_5, // ADC_SAMPLETIME_2CYCLES_5
+			CYCLES_6_5, // ADC_SAMPLETIME_6CYCLES_5
+			CYCLES_12_5, // ADC_SAMPLETIME_12CYCLES_5
+			CYCLES_24_5, // ADC_SAMPLETIME_24CYCLES_5
+			CYCLES_47_5, // ADC_SAMPLETIME_47CYCLES_5
+			CYCLES_92_5, // ADC_SAMPLETIME_92CYCLES_5
+			CYCLES_247_5, // ADC_SAMPLETIME_247CYCLES_5
+			CYCLES_640_5 // ADC_SAMPLETIME_640CYCLES_5
+		} ADC_SAMPLE_TIME = CYCLES_47_5;
+		const enum : uint8_t {
+			OVERSAMPLING_0 = 1, // 1 sample, OversamplingMode = DISABLE
+			OVERSAMPLING_2 = 2, // 2 samples, ADC_OVERSAMPLING_RATIO_2
+			OVERSAMPLING_4 = 4, // 4 samples, ADC_OVERSAMPLING_RATIO_4
+			OVERSAMPLING_8 = 8, // 8 samples, ADC_OVERSAMPLING_RATIO_8
+			OVERSAMPLING_16 = 16, // 16 samples, ADC_OVERSAMPLING_RATIO_16
+		} ADC_OVERSAMPLING = OVERSAMPLING_0;
 		const uint16_t ADC_SAMPLE_TIME_OVERHEAD_US = 1; // add 1 us ADC sample overhead time on top of the pre-computed ADC sample+conversion time
 		const uint16_t ADC_PWM_RIPPLE_TIME_US = 8; // transient ripple from PWM level change - keep ADC sampling (whole ADC capture period) away from PWM level changes by at least this amount
 
@@ -100,6 +117,8 @@ class SyncedPWMADC
 		} SampleSingleInt32;
 
 	private:
+		Encoder * _encoder{0};
+
 		float _PWM_maxDuty;
 
 		// ADC samples
@@ -161,6 +180,8 @@ class SyncedPWMADC
 		TimerSettings_t timerSettingsCurrent;
 		TimerSettings_t timerSettingsNext;
 
+		uint32_t interruptComputeTimeTicks; // HighResTimer ticks spent in SamplingCompleted interrupt
+
 		struct {
 			SampleFloat Vref;
 			SampleFloat CurrentSense;
@@ -175,7 +196,7 @@ class SyncedPWMADC
 			uint16_t Ripple;
 		} PredefinedCounts;
 
-		float VrefON[MAX_SAMPLING_NUM_SAMPLES]{0};
+		float VrefON[MAX_SAMPLING_NUM_SAMPLES]{0}; // Vref/ADC_MAX_VALUE
 		float VrefOFF[MAX_SAMPLING_NUM_SAMPLES]{0};
 
 	public:
@@ -210,12 +231,12 @@ class SyncedPWMADC
 			struct {
 				bool Enabled{true};
 				struct {
-					LinearCalibration_t LowRange{1.0f, 0.0f}; // With voltage-divider disabled
-					LinearCalibration_t HighRange{4.9366684f, -0.109847791f}; // With voltage-divider enabled
+					LinearCalibration_t LowRange{1.0f, 0.0f}; // Voltage-divider disabled
+					LinearCalibration_t HighRange{4.9366684f, -0.109847791f}; // Voltage-divider enabled
 				} BEMF1; // Backward = negative duty cycle
 				struct {
-					LinearCalibration_t LowRange{1.0f, 0.0f}; // With voltage-divider disabled
-					LinearCalibration_t HighRange{5.07898712f, -0.125128999f}; // With voltage-divider enabled
+					LinearCalibration_t LowRange{1.0f, 0.0f}; // Voltage-divider disabled
+					LinearCalibration_t HighRange{5.07898712f, -0.125128999f}; // Voltage-divider enabled
 				} BEMF3; // Forward = positive duty cycle
 			} Bemf;
 
@@ -225,12 +246,23 @@ class SyncedPWMADC
 			} Vbus;
 		} ChannelCalibrations; // channel specific calibrations (PCB/hardware specific)
 
-		Encoder * _encoder{0};
+		struct {
+			float Kt{0.157f};
+			float R{2.926513200487657f};
+			float L{0.001705843060425f};
+			float Ke{0.276158049818619f};
+			float J{0.000901f};
+			float B{0.000477f};
+			float tau_c{0.011868f};
+			float n_gear{30};
+			uint32_t TicksBeforeGearing{64};
+			uint32_t TicksAfterGearing{1920}; // n_gear*TicksBeforeGearing
+		} MotorParameters;
 
 		typedef struct __attribute__((__packed__)) {
 			uint32_t Timestamp{0};
 
-			uint32_t PWM_Frequency{0}; // Hz
+			uint16_t PWM_Frequency{0}; // Hz
 			uint32_t TimerMax{0}; // timer count
 			uint32_t DutyCycleLocation{0}; // timer count
 			uint32_t TriggerLocationON{0}; // timer count
@@ -251,6 +283,12 @@ class SyncedPWMADC
 			bool BemfHighRange{false};
 		} CombinedSample_t;
 
+	private:
+		CombinedSample_t _latestSample;
+#ifdef USE_FREERTOS
+		SemaphoreHandle_t _latestSampleMutex;
+#endif
+
 	public:
 		void SetOperatingMode(OperatingMode_t mode);
 		OperatingMode_t GetOperatingMode(void);
@@ -259,10 +297,13 @@ class SyncedPWMADC
 		//void SetDutyCycle(float duty);
 		float GetCurrentDutyCycle();
 		bool GetCurrentDirection();
+		CombinedSample_t GetLatestSample();
 
 		void SetDutyCycle_MiddleSampling(float dutyPct);
 		void SetDutyCycle_EndSampling(float dutyPct);
 		void SetDutyCycle_MiddleSamplingOnce(float dutyPct);
+		void SetCustomSamplingLocations(float samplingLocation1, float samplingLocation2 = 0.0f);
+		void SetDutyCycle_CustomSampling(float dutyPct, float samplingLocation1, float samplingLocation2);
 
 		void AssignEncoder(Encoder * encoder);
 		void DetermineCurrentSenseOffset();
@@ -277,6 +318,7 @@ class SyncedPWMADC
 
 	private:
 		void RecomputePredefinedCounts();
+		static void LatchTimerSettings(SyncedPWMADC * obj);
 
 	public:
 		static void TriggerSample(SyncedPWMADC * obj);
