@@ -17,14 +17,13 @@
  */
  
 #include "FirstOrderLPF.h"
- 
-FirstOrderLPF::FirstOrderLPF(float Ts, float tau) : _Ts(Ts), _tau(tau),
-	// Calculate filter coefficients for a  of First order Low-pass filter using the Tustin (Bilinear) transform (however without frequency warping)
-	_coeff_b( 1/(2*tau/Ts + 1) ), // nominator
-	_coeff_a( 1/(2*tau/Ts + 1) - 2/(2 + Ts/tau) ) // denominator
+#include "MathLib.h"
+#include <cmath>
+
+FirstOrderLPF::FirstOrderLPF(float Ts, float freq3dB) : _Ts(Ts)
 {
-	_inputOld = 0;
-	_lpfOld = 0;
+	ChangeFrequency(freq3dB);
+	Reset();
 }
 
 FirstOrderLPF::~FirstOrderLPF()
@@ -46,9 +45,15 @@ void FirstOrderLPF::Reset(void)
 	_lpfOld = 0;
 }
 
-void FirstOrderLPF::ChangeTimeconstant(float tau)
+void FirstOrderLPF::ChangeFrequency(float freq3dB)
 {
-	_tau = tau;
-	_coeff_b = 1/(2*tau/_Ts + 1); // nominator
-	_coeff_a = 1/(2*tau/_Ts + 1) - 2/(2 + _Ts/tau); // denominator
+	// Calculate filter coefficients for a  of First order Low-pass filter using the Tustin (Bilinear) transform with frequency warping
+	float omega_continuous = M_2PI * freq3dB;
+	float omega_digital = _Ts * omega_continuous; // omega_continuous / fs
+	float omega_continuous_warped = 2.f/_Ts * tanf(omega_digital/2.f);
+	float tau = 1.f / omega_continuous_warped;
+
+	_coeff_b = 1.f/(2.f*tau/_Ts + 1.f); // nominator
+	_coeff_a = 1.f/(2.f*tau/_Ts + 1.f) - 2.f/(2.f + _Ts/tau); // denominator
+	_freq3dB = freq3dB;
 }

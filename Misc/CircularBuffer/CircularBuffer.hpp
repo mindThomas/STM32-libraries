@@ -32,7 +32,7 @@ template<typename T>
 class CircularBuffer
 {
 	public:
-		CircularBuffer(uint32_t size) : _buffer(0), _bufferSize(size), _bufferWriteIdx(0), _bufferReadIdx(0), _overrunDetected(false)
+		CircularBuffer(uint32_t size, bool allowOverrun = false) : _buffer(0), _bufferSize(size), _bufferWriteIdx(0), _bufferReadIdx(0), _allowOverrun(allowOverrun), _overrunDetected(false)
 		{
 			if (!size)
 				return;
@@ -45,6 +45,8 @@ class CircularBuffer
 
 			if (!_buffer)
 				return;
+
+			memset(_buffer, 0, size * sizeof(T));
 
 			#ifdef USE_FREERTOS
 			_bufferSemaphore = xSemaphoreCreateBinary();
@@ -71,7 +73,7 @@ class CircularBuffer
 		void Push(T packet)
 		{
 			if (!_buffer) return; // error, buffer memory not available
-			if (AvailablePackets() >= _bufferSize) return; // error, buffer is full
+			if (!_allowOverrun && AvailablePackets() >= _bufferSize) return; // error, buffer is full
 
 			#ifdef USE_FREERTOS
 			xSemaphoreTake( _bufferSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
@@ -81,7 +83,7 @@ class CircularBuffer
 			/*_bufferWriteIdx++;
 			if (_bufferWriteIdx == _bufferSize) _bufferWriteIdx = 0;*/
 			_bufferWriteIdx = (_bufferWriteIdx + 1) % _bufferSize;
-			if (_bufferWriteIdx == _bufferReadIdx) {
+			if (!_allowOverrun && _bufferWriteIdx == _bufferReadIdx) {
 				if (_overrunDetected) { // overrun detected in previous write, so now we need to discard an old sample by increase the reading pointer
 					_bufferReadIdx = (_bufferReadIdx + 1) % _bufferSize;
 				} else {
@@ -185,11 +187,29 @@ class CircularBuffer
 			return (_bufferSize - AvailablePackets());
 		}
 
+		// Only truly useful when overrun is allowed
+		T Front()
+		{
+			// Return the most recently pushed element
+			if (_bufferWriteIdx == 0)
+				return _buffer[_bufferSize-1];
+			else
+				return _buffer[_bufferWriteIdx-1];
+		}
+
+		T Back()
+		{
+			// Return the oldest pushed element
+			return _buffer[_bufferWriteIdx];
+		}
+
+
 	private:
 		const uint32_t _bufferSize;
 		T * _buffer;
 		uint32_t _bufferWriteIdx;
 		uint32_t _bufferReadIdx;
+		bool _allowOverrun;
 		bool _overrunDetected;
 		
 	#ifdef USE_FREERTOS

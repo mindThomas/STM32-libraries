@@ -465,7 +465,7 @@ void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
 	// Sample EITHER in the middle of the ON-period or in the middle of the OFF-period
 	if (timerSettingsNext.DutyCycle >= 0.5 && sampleLocation1 > 0) {
 		sampleLocation2 = 0; // since the ON-period is longest, remove sampling from the OFF-period
-	} else {
+	} else if (timerSettingsNext.DutyCycle < 0.5 && sampleLocation2 > 0) {
 		sampleLocation1 = 0; // since the OFF-period is longest, remove sampling from the ON-period
 	}
 
@@ -758,8 +758,8 @@ void SyncedPWMADC::TriggerSample(SyncedPWMADC * obj)
 	// Latch timer settings since we now start the next period
 	LatchTimerSettings(obj);
 
-	if (obj->_DMA_ADC1_ongoing || obj->_DMA_ADC2_ongoing) return; // Previous conversion not finished yet
-	if (obj->hDMA_ADC1.State != HAL_DMA_STATE_READY || obj->hDMA_ADC2.State != HAL_DMA_STATE_READY) return;
+	//if (obj->_DMA_ADC1_ongoing || obj->_DMA_ADC2_ongoing) return; // Previous conversion not finished yet
+	//if (obj->hDMA_ADC1.State != HAL_DMA_STATE_READY || obj->hDMA_ADC2.State != HAL_DMA_STATE_READY) return;
 
 	/* Start/Trigger the ADC1 DMA */
 	if (obj->hDMA_ADC1.State != HAL_DMA_STATE_READY) {
@@ -962,8 +962,12 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 							obj->Samples.CurrentSense.ValueON += obj->VrefON[i] * (float)buf[bufIdx];
 						}
 						obj->Samples.CurrentSense.ValueON /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
-						if (obj->ChannelCalibrations.CurrentSense.Enabled)
+						if (obj->ChannelCalibrations.CurrentSense.Enabled) {
 							obj->Samples.CurrentSense.ValueON = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueON + obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
+
+							// Invert value since motor is driven backwards (and current is measured in opposite direction)
+							obj->Samples.CurrentSense.ValueON = -obj->Samples.CurrentSense.ValueON;
+						}
 					}
 					if (obj->Samples.CurrentSense.UpdatedOFF) {
 						obj->Samples.CurrentSense.ValueOFF = 0;
@@ -974,8 +978,12 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 							obj->Samples.CurrentSense.ValueOFF += obj->VrefOFF[i] * (float)buf[bufIdx];
 						}
 						obj->Samples.CurrentSense.ValueOFF /= obj->timerSettingsCurrent.samplingAveragingNumSamples;
-						if (obj->ChannelCalibrations.CurrentSense.Enabled)
+						if (obj->ChannelCalibrations.CurrentSense.Enabled) {
 							obj->Samples.CurrentSense.ValueOFF = obj->ChannelCalibrations.CurrentSense.VSENSE3.Scale * (obj->Samples.CurrentSense.ValueOFF + obj->ChannelCalibrations.CurrentSense.VSENSE3.Offset);
+
+							// Invert value since motor is driven backwards (and current is measured in opposite direction)
+							obj->Samples.CurrentSense.ValueOFF = -obj->Samples.CurrentSense.ValueOFF;
+						}
 					}
 				}
 			}
@@ -1040,6 +1048,9 @@ void SyncedPWMADC::SamplingCompleted(SyncedPWMADC * obj, uint8_t ADC)
 									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Scale * (obj->Samples.Bemf.Value + obj->ChannelCalibrations.Bemf.BEMF1.HighRange.Offset);
 								else
 									obj->Samples.Bemf.Value = obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Scale * (obj->Samples.Bemf.Value + obj->ChannelCalibrations.Bemf.BEMF1.LowRange.Offset);
+
+								// Invert value since BEMF sense is in backwards direction
+								obj->Samples.Bemf.Value = -obj->Samples.Bemf.Value;
 							}
 						}
 					}
@@ -1206,10 +1217,11 @@ void SyncedPWMADC::WaitForNewSample()
 {
 #ifdef USE_FREERTOS
 	xSemaphoreTake( _sampleAvailable, ( TickType_t ) portMAX_DELAY );
-#endif
+#else
 	while (!_sampleAvailable) {
 		osDelay(1);
 	}
+#endif
 }
 
 void SyncedPWMADC::WaitForNewQueuedSample()

@@ -22,16 +22,16 @@
 class FirstOrderLPF
 {
 	public:
-		FirstOrderLPF(float Ts, float tau);
+		FirstOrderLPF(float Ts, float freq3dB);
 		~FirstOrderLPF();
 		
 		float Filter(float input);
 		void Reset(void);
-		void ChangeTimeconstant(float tau);
+		void ChangeFrequency(float freq3dB);
 
 	private:
 		const float _Ts;       // Sampling Time
-		float _tau;            // Filter time constant
+		float _freq3dB;        // Filter cutoff frequency (-3 dB)
 
 		float _coeff_b = 0.0;  // IIR filter coefficient (nominator polynomial)
 		float _coeff_a = 0.0;  // IIR filter coefficient (denominator polynomial)
