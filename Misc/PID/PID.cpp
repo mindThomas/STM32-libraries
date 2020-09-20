@@ -43,7 +43,14 @@ void PID::Reset(void)
 		_prevTimerValue = 0;
 }
 
-float PID::Step(const float state, const float ref)
+void PID::SetPID(float Kp, float Ki, float Kd)
+{
+	Kp_ = Kp;
+	Ki_ = Ki;
+	Kd_ = Kd;
+}
+
+float PID::Step(float state, float ref, bool integrator_enabled)
 {
 	float dt;
 
@@ -51,10 +58,10 @@ float PID::Step(const float state, const float ref)
 	dt = _microsTimer->GetDeltaTime(_prevTimerValue);
 	_prevTimerValue = _microsTimer->Get();
 
-	return Step(state, ref, dt);
+	return Step(state, ref, dt, integrator_enabled);
 }
 
-float PID::Step(const float state, const float ref, const float dt)
+float PID::Step(float state, float ref, float dt, bool integrator_enabled)
 {
 	float error = ref - state;
 
@@ -62,7 +69,8 @@ float PID::Step(const float state, const float ref, const float dt)
 	if (dt > 0)
 		derror = (error - prev_error_) / dt;
 
-	integral_ += dt * error;
+	if (integrator_enabled)
+		integral_ += dt * error;
 
 	float out = Kp_*error + Ki_*integral_ + Kd_*derror;
 	return out;

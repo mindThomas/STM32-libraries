@@ -63,15 +63,6 @@
   * @{
   */
 
-#define USBD_VID     1155
-#define USBD_LANGID_STRING     1033
-#define USBD_MANUFACTURER_STRING     "STMicroelectronics"
-#define USBD_PID_FS     0x5799//22336
-#define USBD_PRODUCT_STRING_FS     "JetsonCar STM32"
-#define USBD_SERIALNUMBER_STRING_FS     "001337001234"
-#define USBD_CONFIGURATION_STRING_FS     "CDC Config"
-#define USBD_INTERFACE_STRING_FS     "CDC Interface"
-
 #define USB_SIZ_BOS_DESC            0x0C
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
@@ -137,6 +128,11 @@ uint8_t * USBD_FS_USR_BOSDescriptor(USBD_SpeedTypeDef speed, uint16_t *length);
   * @}
   */
 
+uint16_t USBD_VID = USBD_VID_DEFAULT;
+uint16_t USBD_PID = USBD_PID_DEFAULT;
+uint8_t * USBD_PRODUCT_STRING = 0;
+uint8_t * USBD_SERIAL_STRING = 0;
+
 /** @defgroup USBD_DESC_Private_Variables USBD_DESC_Private_Variables
   * @brief Private variables.
   * @{
@@ -176,10 +172,10 @@ __ALIGN_BEGIN uint8_t USBD_FS_DeviceDesc[USB_LEN_DEV_DESC] __ALIGN_END =
   0x02,                       /*bDeviceSubClass*/
   0x00,                       /*bDeviceProtocol*/
   USB_MAX_EP0_SIZE,           /*bMaxPacketSize*/
-  LOBYTE(USBD_VID),           /*idVendor*/
-  HIBYTE(USBD_VID),           /*idVendor*/
-  LOBYTE(USBD_PID_FS),        /*idProduct*/
-  HIBYTE(USBD_PID_FS),        /*idProduct*/
+  LOBYTE(USBD_VID_DEFAULT),   /*idVendor*/
+  HIBYTE(USBD_VID_DEFAULT),   /*idVendor*/
+  LOBYTE(USBD_PID_DEFAULT),   /*idProduct*/
+  HIBYTE(USBD_PID_DEFAULT),   /*idProduct*/
   0x00,                       /*bcdDevice rel. 2.00*/
   0x02,
   USBD_IDX_MFC_STR,           /*Index of manufacturer  string*/
@@ -248,6 +244,27 @@ __ALIGN_BEGIN uint8_t USBD_StringSerial[USB_SIZ_STRING_SERIAL] __ALIGN_END = {
   USB_DESC_TYPE_STRING,
 };
 
+void USBD_Set_VID_PID(uint32_t VID, uint32_t PID)
+{
+	USBD_VID = VID;
+	USBD_PID = PID;
+	USBD_FS_DeviceDesc[8] = LOBYTE(USBD_VID);
+	USBD_FS_DeviceDesc[9] = HIBYTE(USBD_VID);
+	USBD_FS_DeviceDesc[10] = LOBYTE(USBD_PID);
+	USBD_FS_DeviceDesc[11] = HIBYTE(USBD_PID);
+}
+
+void USBD_Set_ProductString(const uint8_t * stringPtr)
+{
+	USBD_PRODUCT_STRING = stringPtr;
+}
+
+void USBD_Set_SerialString(const uint8_t * stringPtr)
+{
+	if (strlen(stringPtr) < USB_SIZ_STRING_SERIAL)
+		USBD_SERIAL_STRING = stringPtr;
+}
+
 /**
   * @}
   */
@@ -291,13 +308,13 @@ uint8_t * USBD_FS_LangIDStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
   */
 uint8_t * USBD_FS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
-  if(speed == 0)
+  if(USBD_PRODUCT_STRING)
   {
-    USBD_GetString((uint8_t *)USBD_PRODUCT_STRING_FS, USBD_StrDesc, length);
+    USBD_GetString((uint8_t *)USBD_PRODUCT_STRING, USBD_StrDesc, length);
   }
   else
   {
-    USBD_GetString((uint8_t *)USBD_PRODUCT_STRING_FS, USBD_StrDesc, length);
+    USBD_GetString((uint8_t *)USBD_PRODUCT_STRING_DEFAULT, USBD_StrDesc, length);
   }
   return USBD_StrDesc;
 }
@@ -331,7 +348,14 @@ uint8_t * USBD_FS_SerialStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
   /*Get_SerialNum();
   return (uint8_t *) USBD_StringSerial;*/
   
-  USBD_GetString((uint8_t *)USBD_SERIALNUMBER_STRING_FS, USBD_StrDesc, length);
+  if (USBD_SERIAL_STRING)
+  {
+	  USBD_GetString((uint8_t *)USBD_SERIAL_STRING, USBD_StrDesc, length);
+  }
+  else
+  {
+	  USBD_GetString((uint8_t *)USBD_SERIALNUMBER_STRING_DEFAULT, USBD_StrDesc, length);
+  }
   return USBD_StrDesc;
 }
 

@@ -16,34 +16,30 @@
  * ------------------------------------------
  */
  
-#ifndef DRIVERS_RCRECEIVER_H
-#define DRIVERS_RCRECEIVER_H
+#ifndef MODULES_CPULOAD_H
+#define MODULES_CPULOAD_H
 
-#include "InputCapture.h"
+#include "cmsis_os.h" // for processing task
 
-class RCReceiver : private InputCapture
+#include "LSPC.hpp"
+
+class CPULoad
 {
-	
-private:
-	const float RECEIVER_PERIOD = 0.020;    // 50 Hz = 20 ms
-	const float RECEIVER_PERIOD_TOLERANCE = 0.002;    // +/- 2 ms tolerance
+	private:
+		const uint32_t CPULOAD_THREAD_STACK = 256;
 
-public:
-	RCReceiver(InputCapture::timer_t timer, InputCapture::ic_channel_t channel, float min_ms = 1.0f, float max_ms = 2.0f);
-	//~RCReceiver(); // use base-class destructor
+	public:
+		CPULoad(LSPC& lspc, uint32_t cpuLoadTaskPriority);
+		~CPULoad();
 
-	float Get(bool ClearAfterReading = false);
-	bool isActive(void);
+	private:
+		TaskHandle_t _cpuLoadTaskHandle;
 
-private:
-	bool VerifyPeriod(void);
+		LSPC& _lspc;
 
-private:
-	float _min;
-	float _max;
-
-	float _prev_value;
-
+	private:
+		static void CPULoadThread(void * pvParameters);
+		
 };
 	
 	

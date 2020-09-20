@@ -135,7 +135,7 @@ void Encoder::ConfigureEncoderGPIO()
 		GPIO_InitStruct.Pin = GPIO_PIN_5;
 		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
 		GPIO_InitStruct.Pull = GPIO_PULLUP;
-		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 		GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
 		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 		
@@ -159,7 +159,7 @@ void Encoder::ConfigureEncoderGPIO()
 		GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
 		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
 		GPIO_InitStruct.Pull = GPIO_PULLUP;
-		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 		GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
 		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
@@ -180,7 +180,7 @@ void Encoder::ConfigureEncoderGPIO()
 		GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
 		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
 		GPIO_InitStruct.Pull = GPIO_PULLUP;
-		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 		GPIO_InitStruct.Alternate = GPIO_AF2_TIM5;
 		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
@@ -216,11 +216,11 @@ void Encoder::ConfigureEncoderPeripheral()
 	sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
 	sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
 	sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-	sConfig.IC1Filter = 0;
+	sConfig.IC1Filter = 0xF;
 	sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
 	sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
 	sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-	sConfig.IC2Filter = 0;
+	sConfig.IC2Filter = 0xF;
 
 	if (HAL_TIM_Encoder_Init(&_hRes->handle, &sConfig) != HAL_OK)
 	{

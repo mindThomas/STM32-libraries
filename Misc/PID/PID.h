@@ -32,8 +32,9 @@ class PID
 		~PID();
 
 		void Reset(void);
-		float Step(const float state, const float ref);
-		float Step(const float state, const float ref, const float dt);
+		void SetPID(float Kp, float Ki, float Kd);
+		float Step(const float state, const float ref, bool integrator_enabled = true);
+		float Step(const float state, const float ref, const float dt, bool integrator_enabled = true);
 
 	private:
 		float Kp_;

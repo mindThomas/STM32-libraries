@@ -34,7 +34,7 @@ PCD_HandleTypeDef USBCDC::hpcd_USB_OTG_FS;
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" __EXPORT void OTG_FS_IRQHandler(void);
 
-USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TXfinishedSemaphore(0), _RXdataAvailable(0), _TXqueue(0), _RXqueue(0), _connected(false)
+USBCDC::USBCDC(uint32_t transmitterTaskPriority, const char * productString, uint32_t PID, uint32_t VID) : _processingTaskHandle(0), _TXfinishedSemaphore(0), _RXdataAvailable(0), _TXqueue(0), _RXqueue(0), _connected(false)
 {
 	if (usbHandle) {
 		ERROR("USB object already created");
@@ -82,6 +82,11 @@ USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TX
 	}
 	vQueueAddToRegistry(_TXfinishedSemaphore, "USB TX Finished");
 	USBD_CDC_SetTXfinishedSemaphore(_TXfinishedSemaphore);
+
+	USBD_Set_VID_PID(VID, PID);
+	if (productString)
+		USBD_Set_ProductString((uint8_t *)productString);
+	//USBD_Set_SerialString("001337001234");
 
 	/* Init USB Device Library, add supported class and start the library. */
 	USBD_LL_SetPCD(&USBCDC::hpcd_USB_OTG_FS);

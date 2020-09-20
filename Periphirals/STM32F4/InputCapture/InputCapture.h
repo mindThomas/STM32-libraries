@@ -49,6 +49,7 @@ class InputCapture
 		float GetLowTime(void);
 		float GetHighTime(void);
 		float GetPeriodTime(void);
+		void Clear(void);
 
 	public:
 		typedef struct hardware_resource_t {
