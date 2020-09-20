@@ -43,6 +43,13 @@ void PID::Reset(void)
 		_prevTimerValue = 0;
 }
 
+void PID::SetPID(float Kp, float Ki, float Kd)
+{
+	Kp_ = Kp;
+	Ki_ = Ki;
+	Kd_ = Kd;
+}
+
 float PID::Step(float state, float ref, bool integrator_enabled)
 {
 	float dt;

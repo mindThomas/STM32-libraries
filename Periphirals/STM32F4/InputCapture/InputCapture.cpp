@@ -240,7 +240,7 @@ void InputCapture::ConfigureTimerChannel()
 	sICConfig.ICPolarity  = TIM_ICPOLARITY_BOTHEDGE;
 	sICConfig.ICSelection = TIM_ICSELECTION_DIRECTTI;
 	sICConfig.ICPrescaler = TIM_ICPSC_DIV1;
-	sICConfig.ICFilter    = 10;
+	sICConfig.ICFilter    = 0xF;
 
 	if (_channel == CH1)
 		_channelHAL = TIM_CHANNEL_1;
@@ -322,6 +322,23 @@ float InputCapture::GetPeriodTime(void)
 	}
 
 	return _hRes->tickTime * timerCount;
+}
+
+void InputCapture::Clear(void)
+{
+	if (_channel == CH1) {
+		_hRes->inputCaptures_low[0] = 0;
+		_hRes->inputCaptures_high[0] = 0;
+	} else if (_channel == CH2) {
+		_hRes->inputCaptures_low[1] = 0;
+		_hRes->inputCaptures_high[1] = 0;
+	} else if (_channel == CH3) {
+		_hRes->inputCaptures_low[2] = 0;
+		_hRes->inputCaptures_high[2] = 0;
+	} else if (_channel == CH4) {
+		_hRes->inputCaptures_low[3] = 0;
+		_hRes->inputCaptures_high[3] = 0;
+	}
 }
 
 void InputCapture::InterruptHandler(InputCapture::hardware_resource_t * timer)

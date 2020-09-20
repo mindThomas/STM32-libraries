@@ -20,7 +20,7 @@
 #include <math.h>
  
 RCReceiver::RCReceiver(InputCapture::timer_t timer, InputCapture::ic_channel_t channel, float min_ms, float max_ms) :
-InputCapture(timer, channel, 0.1f), _min(min_ms/1000), _max(max_ms/1000)
+InputCapture(timer, channel, 0.1f), _min(min_ms/1000), _max(max_ms/1000),_prev_value(0)
 {
 }
 
@@ -29,14 +29,23 @@ bool RCReceiver::VerifyPeriod(void)
 	return (fabs(GetPeriodTime() - RECEIVER_PERIOD) < RECEIVER_PERIOD_TOLERANCE);
 }
 
-float RCReceiver::Get(void)
+bool RCReceiver::isActive(void)
 {
-	if (!VerifyPeriod()) return 0;
+	return VerifyPeriod();
+}
+
+float RCReceiver::Get(bool ClearAfterReading)
+{
+	if (!VerifyPeriod()) return _prev_value;
 
 	float high_time = GetHighTime();
 	if (high_time == 0) return 0;
 	if (high_time < _min) high_time = _min;
 	if (high_time > _max) high_time = _max;
 
-	return (2 * (high_time - _min) / (_max - _min)) - 1.0f;
+	_prev_value = (2 * (high_time - _min) / (_max - _min)) - 1.0f;
+
+	if (ClearAfterReading) Clear();
+
+	return _prev_value;
 }

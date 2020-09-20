@@ -19,7 +19,7 @@
 #ifndef MISC_MOVINGAVERAGE_H
 #define MISC_MOVINGAVERAGE_H
 
-#include "stm32h7xx_hal.h" // for uint16_t etc
+#include "stdint.h" // for uint16_t etc
 #include "Debug.h"
 #include "cmsis_os.h" // for memory allocation (for the buffer)
 #include "string.h" // for memset

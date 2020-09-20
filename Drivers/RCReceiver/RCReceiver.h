@@ -32,7 +32,8 @@ public:
 	RCReceiver(InputCapture::timer_t timer, InputCapture::ic_channel_t channel, float min_ms = 1.0f, float max_ms = 2.0f);
 	//~RCReceiver(); // use base-class destructor
 
-	float Get(void);
+	float Get(bool ClearAfterReading = false);
+	bool isActive(void);
 
 private:
 	bool VerifyPeriod(void);
@@ -40,6 +41,8 @@ private:
 private:
 	float _min;
 	float _max;
+
+	float _prev_value;
 
 };
 	

@@ -28,6 +28,8 @@
 #include "PID.h"
 #include "FirstOrderLPF.h"
 
+#include <functional>
+
 class SpeedController
 {
 	private:
@@ -35,24 +37,26 @@ class SpeedController
 		const float SAMPLE_RATE = 20; // Hz
 		const uint32_t TicksPrRev = 1;
 
-		const float KP = 0.02;
+		const float KP = 0.03;
 		const float KI = 0.02;
 		const float KD = 0;
 		const float LPF_TAU = 0.0318309886183790671537767526745; // tau = 1/omega = 1/(2*pi*f)
 
-		const float MIN_SPEED = 0.5f; // rad/s (anything below this will be detected as a desire to stop/brake)
+		const float MIN_SPEED = 0.2f; // rad/s (anything below this will be detected as a desire to stop/brake)
 		const float MIN_INTEGRATOR_SPEED = 4.0f; // rad/s (anything below this will be detected as a desire to stop/brake)
-		const float DEADBAND = 0.10f;
-		const float SPEED_TO_OUTPUT_SCALE = 0.3f / 5.0f; // 0.3 output gave 5 rad/s
+		const float DEADBAND = 0.2154f; // deadband value (should come from exponential fit)
 
 	public:
-		SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, const uint32_t EncoderTicksPrRev, uint32_t speedControllerPriority);
+		SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, uint32_t EncoderTicksPrRev, uint32_t speedControllerPriority);
+		SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, uint32_t EncoderTicksPrRev, std::function<float(float)> feedforward, uint32_t speedControllerPriority);
 		~SpeedController();
 
 	public:
 		void Enable();
 		void Disable();
 		void SetSpeed(float speed);
+
+		void SetPID(float P, float I, float D);
 
 	private:
 		TaskHandle_t _speedControllerTaskHandle;
@@ -65,12 +69,21 @@ class SpeedController
 		PID _controller;
 		FirstOrderLPF _speedLPF;
 
+		std::function<float(float)> _feedforward;
+
 		bool _enabled;
 		float _speed;
+
+		enum {
+			STOPPED,
+			FORWARD,
+			BACKWARD
+		} _driving_direction;
 
 	private:
 		static void SpeedControllerThread(void * pvParameters);
 		
+	public:
 		static int32_t EncoderDiff;
 		static float SpeedRaw;
 		static float SpeedFiltered;

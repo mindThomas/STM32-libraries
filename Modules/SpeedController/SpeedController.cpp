@@ -29,10 +29,16 @@ float SpeedController::SpeedFiltered;
 float SpeedController::SpeedSetpoint;
 float SpeedController::MotorOutput;
 
-SpeedController::SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, const uint32_t EncoderTicksPrRev, uint32_t speedControllerPriority) : _speedControllerTaskHandle(0), _lspc(lspc), _microsTimer(microsTimer), _motor(motor), _encoder(encoder), TicksPrRev(EncoderTicksPrRev), _controller(KP, KI, KD, &microsTimer), _speedLPF(1.0f / SAMPLE_RATE, LPF_TAU), _enabled(false), _speed(0)
+SpeedController::SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, uint32_t EncoderTicksPrRev, uint32_t speedControllerPriority) : _speedControllerTaskHandle(0), _lspc(lspc), _microsTimer(microsTimer), _motor(motor), _encoder(encoder), TicksPrRev(EncoderTicksPrRev), _controller(KP, KI, KD, &microsTimer), _speedLPF(1.0f / SAMPLE_RATE, LPF_TAU), _enabled(false), _speed(0)
 {
 	motor.Disable();
 	xTaskCreate(SpeedController::SpeedControllerThread, (char *)"Speed Controller", SPEED_CONTROLLER_THREAD_STACK, (void*) this, speedControllerPriority, &_speedControllerTaskHandle);
+}
+
+SpeedController::SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, uint32_t EncoderTicksPrRev, std::function<float(float)> feedforward, uint32_t speedControllerPriority)
+	: SpeedController(lspc, microsTimer, motor, encoder, EncoderTicksPrRev, speedControllerPriority)
+{
+	_feedforward = feedforward;
 }
 
 SpeedController::~SpeedController()
@@ -55,6 +61,11 @@ void SpeedController::Disable(void)
 void SpeedController::SetSpeed(float speed)
 {
 	_speed = speed;
+}
+
+void SpeedController::SetPID(float P, float I, float D)
+{
+	_controller.SetPID(P, I, D);
 }
 
 void SpeedController::SpeedControllerThread(void * pvParameters)
@@ -84,11 +95,11 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 	motor.Disable();
 	osDelay(100);
 	motor.Set(0);
-	osDelay(1500);
-	/*motor.Disable();
+	osDelay(100);
+	motor.Disable();
 	osDelay(100);
 	motor.Set(0);
-	osDelay(1000);*/
+	osDelay(1000);
 
 	/* Main loop */
 	xLastWakeTime = xTaskGetTickCount();
@@ -102,7 +113,7 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 		if (!controller->_enabled) {
 			motor.Disable();
 			while (!controller->_enabled) osDelay(10);
-			// Enable motor by calibrating ESC
+			/* Enable motor by calibrating ESC */
 			motor.Disable();
 			osDelay(100);
 			motor.Set(0);
@@ -131,13 +142,22 @@ void SpeedController::SpeedControllerThread(void * pvParameters)
 		controller->SpeedSetpoint = controller->_speed;
 
 		/* Compute control */
-		float output = controller->_speed*(0.3 / 5.0f) + pid.Step(dpsi_filtered, controller->_speed, (fabs(controller->_speed) > controller->MIN_INTEGRATOR_SPEED) );
+		float output = pid.Step(dpsi_filtered, controller->_speed, (fabs(controller->_speed) > controller->MIN_INTEGRATOR_SPEED) );
+		if (controller->_feedforward && fabs(controller->_speed) > controller->MIN_SPEED) {
+			output += controller->_feedforward(controller->_speed);
+		}
 
-		/* Control the direction change */
+		/* Control the direction change and avoid sudden brakes due to computed control output changing sign */
 		if (controller->_speed > controller->MIN_SPEED) // driving forward
-			if (output < controller->DEADBAND) output = controller->DEADBAND;
-		if (controller->_speed < -controller->MIN_SPEED) // driving forward
-			if (output > -controller->DEADBAND) output = -controller->DEADBAND;
+			controller->_driving_direction = FORWARD;
+		else if (controller->_speed < -controller->MIN_SPEED) // driving backward
+			controller->_driving_direction = BACKWARD;
+		else if (fabsf(dpsi_filtered) < controller->MIN_SPEED)
+			controller->_driving_direction = STOPPED;
+
+		if (controller->_driving_direction == FORWARD && output < controller->DEADBAND) output = controller->DEADBAND;
+		if (controller->_driving_direction == BACKWARD && output > -controller->DEADBAND) output = -controller->DEADBAND;
+		if (controller->_driving_direction == STOPPED) pid.Reset();
 
 		/* Saturate output */
 		if (output > 1.0f) output = 1.0f;
