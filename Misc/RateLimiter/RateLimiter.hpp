@@ -27,13 +27,15 @@ class RateLimiter
 {
 		public:
 		RateLimiter(float Ts, float rateLimit)
-            : _accelerationDeltaLimit(Ts * rateLimit)
+            : _Ts(Ts)
+			, _accelerationDeltaLimit(Ts * rateLimit)
 			, _deccelerationDeltaLimit(Ts * rateLimit)
 		{			
 		}
 
 		RateLimiter(float Ts, float accelerationLimit, float deccelerationLimit)
-            : _accelerationDeltaLimit(Ts * accelerationLimit)
+            : _Ts(Ts)
+            , _accelerationDeltaLimit(Ts * accelerationLimit)
 			, _deccelerationDeltaLimit(Ts * deccelerationLimit)
 		{
 		}
@@ -41,6 +43,18 @@ class RateLimiter
         void reset(float prevOutput)
         {
             _prevOutput = prevOutput;
+        }
+
+        void set_rate_limit(float rateLimit)
+        {
+        	_accelerationDeltaLimit = _Ts * rateLimit;
+        	_deccelerationDeltaLimit = _Ts * rateLimit;
+        }
+
+        void set_rate_limits(float accelerationLimit, float deccelerationLimit)
+        {
+        	_accelerationDeltaLimit = _Ts * accelerationLimit;
+        	_deccelerationDeltaLimit = _Ts * deccelerationLimit;
         }
 		
 		float operator()(float input)
@@ -63,6 +77,7 @@ class RateLimiter
             }
 
 		private:
+            float _Ts;
 			float _accelerationDeltaLimit;
 			float _deccelerationDeltaLimit;
             float _prevOutput;
