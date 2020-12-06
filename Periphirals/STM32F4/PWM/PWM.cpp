@@ -26,12 +26,16 @@ PWM::hardware_resource_t * PWM::resTIMER8 = 0;
 PWM::hardware_resource_t * PWM::resTIMER9 = 0;
 PWM::hardware_resource_t * PWM::resTIMER12 = 0;
 
-PWM::PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue) : _channel(channel), _channelHAL(0)
+PWM::PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue, bool invert) : _channel(channel), _channelHAL(0)
 {
-	InitPeripheral(timer, channel, frequency, maxValue);
+	InitPeripheral(timer, channel, frequency, maxValue, invert);
 }
 
-PWM::PWM(timer_t timer, pwm_channel_t channel) : PWM(timer, channel, 0, 0)
+PWM::PWM(timer_t timer, pwm_channel_t channel) : PWM(timer, channel, 0, 0, false)
+{
+}
+
+PWM::PWM(timer_t timer, pwm_channel_t channel, bool invert) : PWM(timer, channel, 0, 0, invert)
 {
 }
 
@@ -80,7 +84,7 @@ PWM::~PWM()
 	}
 }
 
-void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue)
+void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue, bool invert)
 {
 	bool configureResource = false;
 
@@ -190,7 +194,7 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
 	}
 
 	ConfigureTimerGPIO();
-	ConfigureTimerChannel();
+	ConfigureTimerChannel(invert);
 }
 
 void PWM::ConfigureTimerPeripheral()
@@ -362,7 +366,7 @@ void PWM::ConfigureTimerGPIO()
 	}
 }
 
-void PWM::ConfigureTimerChannel()
+void PWM::ConfigureTimerChannel(bool invert)
 {
 	if (!_hRes) return;
 
@@ -370,7 +374,7 @@ void PWM::ConfigureTimerChannel()
 
 	sConfigOC.OCMode = TIM_OCMODE_PWM1;
 	sConfigOC.Pulse = 0;
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+	sConfigOC.OCPolarity = invert ? TIM_OCPOLARITY_LOW : TIM_OCPOLARITY_HIGH;
 	sConfigOC.OCNPolarity = TIM_OCNPOLARITY_LOW;
 	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 	sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;

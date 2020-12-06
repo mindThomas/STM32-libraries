@@ -29,7 +29,7 @@ float SpeedController::SpeedFiltered;
 float SpeedController::SpeedSetpoint;
 float SpeedController::MotorOutput;
 
-SpeedController::SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, uint32_t EncoderTicksPrRev, uint32_t speedControllerPriority) : _speedControllerTaskHandle(0), _lspc(lspc), _microsTimer(microsTimer), _motor(motor), _encoder(encoder), TicksPrRev(EncoderTicksPrRev), _controller(KP, KI, KD, &microsTimer), _speedLPF(1.0f / SAMPLE_RATE, LPF_TAU), _enabled(false), _speed(0)
+SpeedController::SpeedController(LSPC * lspc, Timer& microsTimer, Servo& motor, Encoder& encoder, uint32_t EncoderTicksPrRev, uint32_t speedControllerPriority) : _speedControllerTaskHandle(0), _lspc(lspc), _microsTimer(microsTimer), _motor(motor), _encoder(encoder), TicksPrRev(EncoderTicksPrRev), _controller(KP, KI, KD, &microsTimer), _speedLPF(1.0f / SAMPLE_RATE, LPF_FREQ), _enabled(false), _speed(0)
 {
 	motor.Disable();
 	xTaskCreate(SpeedController::SpeedControllerThread, (char *)"Speed Controller", SPEED_CONTROLLER_THREAD_STACK, (void*) this, speedControllerPriority, &_speedControllerTaskHandle);

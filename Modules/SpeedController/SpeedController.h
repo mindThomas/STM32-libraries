@@ -40,7 +40,7 @@ class SpeedController
 		const float KP = 0.03;
 		const float KI = 0.02;
 		const float KD = 0;
-		const float LPF_TAU = 0.0318309886183790671537767526745; // tau = 1/omega = 1/(2*pi*f)
+		const float LPF_FREQ = 5.0; // Hz
 
 		const float MIN_SPEED = 0.2f; // rad/s (anything below this will be detected as a desire to stop/brake)
 		const float MIN_INTEGRATOR_SPEED = 4.0f; // rad/s (anything below this will be detected as a desire to stop/brake)

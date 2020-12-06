@@ -40,14 +40,15 @@ class PWM
 		} pwm_channel_t;
 
 	public:
-		PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue);
+		PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue, bool invert = false);
+		PWM(timer_t timer, pwm_channel_t channel, bool invert);
 		PWM(timer_t timer, pwm_channel_t channel);
 		~PWM();
 
-		void InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue);
+		void InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue, bool invert);
 		void ConfigureTimerPeripheral();
 		void ConfigureTimerGPIO();
-		void ConfigureTimerChannel();
+		void ConfigureTimerChannel(bool invert);
 
 		void Set(float value);
 		void SetRaw(uint16_t value);
