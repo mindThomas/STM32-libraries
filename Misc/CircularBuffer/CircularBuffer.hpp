@@ -68,6 +68,11 @@ class CircularBuffer
 				free(_buffer);
 				#endif
 			}
+
+			#ifdef USE_FREERTOS
+			vQueueUnregisterQueue(_bufferSemaphore);
+			vSemaphoreDelete(_bufferSemaphore);
+			#endif
 		}
 
 		void Push(T packet)
