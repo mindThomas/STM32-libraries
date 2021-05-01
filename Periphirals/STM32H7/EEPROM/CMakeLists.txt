@@ -1,13 +1,11 @@
-set(LIBRARY_NAME           STM32H7_EEPROM
-)
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::FLASH
-                           HAL::STM32::H7::M7::FLASHEx
-                           HAL::STM32::H7::M7::RCC
-                           HAL::STM32::H7::M7::CORTEX
-                           CMSIS::STM32::H7::M7
-)
-set(LIBRARY_SOURCES        EEPROM.cpp
-)
+set(LIBRARY_NAME STM32H7_EEPROM)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::FLASH
+    HAL::STM32::H7::M7::FLASHEx
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES EEPROM.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 

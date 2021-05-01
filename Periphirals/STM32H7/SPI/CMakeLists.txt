@@ -1,14 +1,12 @@
-set(LIBRARY_NAME           STM32H7_SPI
-        )
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::SPI
-        HAL::STM32::H7::M7::DMA
-        HAL::STM32::H7::M7::RCC
-        HAL::STM32::H7::M7::GPIO
-        HAL::STM32::H7::M7::CORTEX
-        CMSIS::STM32::H7::M7
-        )
-set(LIBRARY_SOURCES        SPI.cpp
-        )
+set(LIBRARY_NAME STM32H7_SPI)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::SPI
+    HAL::STM32::H7::M7::DMA
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::GPIO
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES SPI.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 

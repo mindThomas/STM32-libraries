@@ -1,13 +1,11 @@
-set(LIBRARY_NAME           STM32H7_INPUTCAPTURE
-        )
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::TIM
-                            HAL::STM32::H7::M7::RCC
-                            HAL::STM32::H7::M7::GPIO
-                            HAL::STM32::H7::M7::CORTEX
-                            CMSIS::STM32::H7::M7
-)
-set(LIBRARY_SOURCES        InputCapture.cpp
-)
+set(LIBRARY_NAME STM32H7_INPUTCAPTURE)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::TIM
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::GPIO
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES InputCapture.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 

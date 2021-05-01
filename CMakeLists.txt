@@ -16,13 +16,13 @@
 # ------------------------------------------
 #project(stm32-libraries C CXX ASM)
 
-## Add support for C++11, C++14 or C++17
+# Add support for C++11, C++14 or C++17
 #add_definitions(-std=c++11)
 set(CMAKE_CXX_STANDARD 11 PARENT_SCOPE)
 set(CMAKE_CXX_STANDARD_REQUIRED ON PARENT_SCOPE)
 set(CMAKE_CXX_EXTENSIONS OFF PARENT_SCOPE) # use -std=c++14 instead of -std=gnu++14
 
-## Print project compile flags
+# Print project compile flags
 message(STATUS "Default Compile flags [current build: ${CMAKE_BUILD_TYPE}]")
 message(STATUS "  CMAKE_C_FLAGS_DEBUG: ${CMAKE_C_FLAGS_DEBUG}")
 message(STATUS "  CMAKE_C_FLAGS_RELEASE: ${CMAKE_C_FLAGS_RELEASE}")
@@ -38,13 +38,15 @@ message(STATUS "")
 # Make a compiler flag for the current source folder path
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__SOURCE_FOLDER__='\"$(dir $(abspath $<))\"'")
 
-define_property(TARGET PROPERTY LIBRARY_OPTIONS
-    BRIEF_DOCS "List of options for a particular library"
-    FULL_DOCS "List of options for a particular library")
+define_property(TARGET
+                PROPERTY LIBRARY_OPTIONS
+                BRIEF_DOCS "List of options for a particular library"
+                FULL_DOCS "List of options for a particular library")
 
-define_property(TARGET PROPERTY CONFIGURABLE_LIBRARY_OPTIONS
-        BRIEF_DOCS "List of configurable options for a particular library"
-        FULL_DOCS "List of configurable options for a particular library")
+define_property(TARGET
+                PROPERTY CONFIGURABLE_LIBRARY_OPTIONS
+                BRIEF_DOCS "List of configurable options for a particular library"
+                FULL_DOCS "List of configurable options for a particular library")
 
 function(ADD_LIBRARY_OPTION LIBRARY OPTION EXTRA_DEPENDENCIES)
     #if(${LIBRARY}_OPTIONS)
@@ -54,13 +56,13 @@ function(ADD_LIBRARY_OPTION LIBRARY OPTION EXTRA_DEPENDENCIES)
     #endif()
     #set_property(GLOBAL APPEND PROPERTY LIBRARY_OPTIONS "${LIBRARY}_USE_${OPTION}")
 
-    target_compile_definitions(${LIBRARY} INTERFACE
-        $<$<IN_LIST:${LIBRARY}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY}_USE_${OPTION}">
-    )
+    target_compile_definitions(
+        ${LIBRARY} INTERFACE
+        $<$<IN_LIST:${LIBRARY}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY}_USE_${OPTION}">)
 
-    target_link_libraries(${LIBRARY} INTERFACE
-        $<$<IN_LIST:${LIBRARY}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:${EXTRA_DEPENDENCIES}>
-    )
+    target_link_libraries(
+        ${LIBRARY}
+        INTERFACE $<$<IN_LIST:${LIBRARY}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:${EXTRA_DEPENDENCIES}>)
 endfunction()
 
 function(ENABLE_OPTION TARGET LIBRARY OPTION)
@@ -73,7 +75,7 @@ function(ENABLE_OPTION TARGET LIBRARY OPTION)
 
     # if(NOT (${LIBRARY}_USE_${OPTION} IN_LIST options))
     #     message(FATAL_ERROR "Option ${OPTION} not found for library ${LIBRARY}")
-    # endif()        
+    # endif()
     # if(NOT TARGET ${TARGET})
     #     message(FATAL_ERROR "Target ${TARGET} not found")
     # endif()
@@ -81,20 +83,17 @@ function(ENABLE_OPTION TARGET LIBRARY OPTION)
     #target_compile_definitions(${TARGET} PUBLIC ${LIBRARY}_USE_${OPTION})
     set_property(TARGET ${TARGET} APPEND PROPERTY LIBRARY_OPTIONS "${LIBRARY}_USE_${OPTION}")
 
-
     # For debugging
     if(NOT TARGET print_options_${TARGET})
         add_custom_target(print_options_${TARGET}
-            COMMAND ${CMAKE_COMMAND} -E echo '$<TARGET_PROPERTY:${TARGET},LIBRARY_OPTIONS>'
-        )
+                          COMMAND ${CMAKE_COMMAND} -E echo '$<TARGET_PROPERTY:${TARGET},LIBRARY_OPTIONS>')
     endif()
 endfunction()
 
-
 function(ADD_CONFIGURABLE_LIBRARY_OPTION LIBRARY OPTION)
-    target_compile_definitions(${LIBRARY} INTERFACE
-            $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY}_${OPTION}=.*$>
-            )
+    target_compile_definitions(
+        ${LIBRARY} INTERFACE
+        $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY}_${OPTION}=.*$>)
 endfunction()
 
 function(SET_CONFIGURABLE_OPTION TARGET LIBRARY OPTION VALUE)
@@ -104,33 +103,32 @@ function(SET_CONFIGURABLE_OPTION TARGET LIBRARY OPTION VALUE)
     # For debugging
     if(NOT TARGET print_configurable_options_${TARGET})
         add_custom_target(print_configurable_options_${TARGET}
-            COMMAND ${CMAKE_COMMAND} -E echo '$<TARGET_PROPERTY:${TARGET},CONFIGURABLE_LIBRARY_OPTIONS>'
-        )
+                          COMMAND ${CMAKE_COMMAND} -E echo '$<TARGET_PROPERTY:${TARGET},CONFIGURABLE_LIBRARY_OPTIONS>')
     endif()
 endfunction()
 
 # Macro to find all CMakeLists directories
-MACRO(CMAKE_DIRECTORIES return_list)
-    FILE(GLOB_RECURSE new_list CMakeLists.txt)
-    SET(dir_list "")
-    FOREACH(file_path ${new_list})
-        GET_FILENAME_COMPONENT(dir_path ${file_path} PATH)
-        SET(dir_list ${dir_list} ${dir_path})        
-    ENDFOREACH()
-    LIST(REMOVE_DUPLICATES dir_list)
-    LIST(REMOVE_ITEM dir_list ${CMAKE_CURRENT_SOURCE_DIR})
-    SET(${return_list} ${dir_list})
-ENDMACRO()
+macro(CMAKE_DIRECTORIES return_list)
+    file(GLOB_RECURSE new_list CMakeLists.txt)
+    set(dir_list "")
+    foreach(file_path ${new_list})
+        get_filename_component(dir_path ${file_path} PATH)
+        set(dir_list ${dir_list} ${dir_path})
+    endforeach()
+    list(REMOVE_DUPLICATES dir_list)
+    list(REMOVE_ITEM dir_list ${CMAKE_CURRENT_SOURCE_DIR})
+    set(${return_list} ${dir_list})
+endmacro()
 
-CMAKE_DIRECTORIES(SUBDIRS)
+cmake_directories(SUBDIRS)
 
 message(STATUS "Loaded directories:")
-FOREACH(subdir ${SUBDIRS})
-  set(LIBRARY_NAME "")
-  message(STATUS "   " ${subdir})
-  ADD_SUBDIRECTORY(${subdir})  
-  if(TARGET ${LIBRARY_NAME})    
-    target_include_directories(${LIBRARY_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-endif()
-ENDFOREACH()
+foreach(subdir ${SUBDIRS})
+    set(LIBRARY_NAME "")
+    message(STATUS "   " ${subdir})
+    add_subdirectory(${subdir})
+    if(TARGET ${LIBRARY_NAME})
+        target_include_directories(${LIBRARY_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    endif()
+endforeach()
 message(STATUS "")

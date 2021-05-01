@@ -1,23 +1,22 @@
-set(LIBRARY_NAME           STM32H7_USBCDC
-        )
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::LL_USB
-        HAL::STM32::H7::M7::PCD
-        HAL::STM32::H7::M7::PCDEx
-        HAL::STM32::H7::M7::PWREx
-        HAL::STM32::H7::M7::RCC
-        HAL::STM32::H7::M7::GPIO
-        HAL::STM32::H7::M7::CORTEX
-        CMSIS::STM32::H7::M7
-        )
-set(LIBRARY_SOURCES        USBCDC.cpp
-        usbd_cdc_if.c
-        usbd_conf.c
-        usbd_desc.c
-        STM32_USB_Device_Library/Class/CDC/Src/usbd_cdc.c
-        STM32_USB_Device_Library/Core/Src/usbd_core.c
-        STM32_USB_Device_Library/Core/Src/usbd_ctlreq.c
-        STM32_USB_Device_Library/Core/Src/usbd_ioreq.c
-        )
+set(LIBRARY_NAME STM32H7_USBCDC)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::LL_USB
+    HAL::STM32::H7::M7::PCD
+    HAL::STM32::H7::M7::PCDEx
+    HAL::STM32::H7::M7::PWREx
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::GPIO
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES
+    USBCDC.cpp
+    usbd_cdc_if.c
+    usbd_conf.c
+    usbd_desc.c
+    STM32_USB_Device_Library/Class/CDC/Src/usbd_cdc.c
+    STM32_USB_Device_Library/Core/Src/usbd_core.c
+    STM32_USB_Device_Library/Core/Src/usbd_ctlreq.c
+    STM32_USB_Device_Library/Core/Src/usbd_ioreq.c)
 
 message("       -- ${LIBRARY_NAME}")
 

@@ -1,15 +1,13 @@
 # Serves as a replacement of the SysTick by configuring TIM16 as a high-frequency SysTick
 # which integrates with the HAL_Delay and Tick framework
 
-set(LIBRARY_NAME           STM32H7_PRECISION_SYSTICK
-        )
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::TIM
-        HAL::STM32::H7::M7::TIMEx
-        HAL::STM32::H7::M7::CORTEX
-        CMSIS::STM32::H7::M7
-        )
-set(LIBRARY_SOURCES        stm32h7xx_hal_timebase_tim.c
-        )
+set(LIBRARY_NAME STM32H7_PRECISION_SYSTICK)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::TIM
+    HAL::STM32::H7::M7::TIMEx
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES stm32h7xx_hal_timebase_tim.c)
 
 message("       -- ${LIBRARY_NAME}")
 

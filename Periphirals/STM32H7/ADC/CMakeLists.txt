@@ -1,16 +1,14 @@
-set(LIBRARY_NAME           STM32H7_ADC
-        )
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::ADC
-        HAL::STM32::H7::M7::ADCEx
-                           HAL::STM32::H7::M7::DMA
-                           HAL::STM32::H7::M7::RCC
-        HAL::STM32::H7::M7::RCCEx
-                           HAL::STM32::H7::M7::GPIO
-                           HAL::STM32::H7::M7::CORTEX
-                           CMSIS::STM32::H7::M7
-)
-set(LIBRARY_SOURCES        ADC.cpp
-)
+set(LIBRARY_NAME STM32H7_ADC)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::ADC
+    HAL::STM32::H7::M7::ADCEx
+    HAL::STM32::H7::M7::DMA
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::RCCEx
+    HAL::STM32::H7::M7::GPIO
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES ADC.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 

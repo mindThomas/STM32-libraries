@@ -1,13 +1,11 @@
-set(LIBRARY_NAME           STM32H7_I2C
-        )
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::I2C
-        HAL::STM32::H7::M7::RCC
-        HAL::STM32::H7::M7::GPIO
-        HAL::STM32::H7::M7::CORTEX
-        CMSIS::STM32::H7::M7
-        )
-set(LIBRARY_SOURCES        I2C.cpp
-        )
+set(LIBRARY_NAME STM32H7_I2C)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::I2C
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::GPIO
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES I2C.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 

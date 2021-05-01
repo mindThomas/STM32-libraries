@@ -1,12 +1,10 @@
-set(LIBRARY_NAME           STM32H7_IO
-)
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::RCC
-                           HAL::STM32::H7::M7::GPIO
-                           HAL::STM32::H7::M7::CORTEX
-                           CMSIS::STM32::H7::M7
-)
-set(LIBRARY_SOURCES        IO.cpp
-)
+set(LIBRARY_NAME STM32H7_IO)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::GPIO
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES IO.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 
@@ -23,4 +21,3 @@ target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
 # Defines STM32H7_IO_USE_DEBUG when option is enabled
 add_library_option(${LIBRARY_NAME} DEBUG STM32_DEBUG)
-

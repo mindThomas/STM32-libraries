@@ -1,13 +1,11 @@
-set(LIBRARY_NAME           STM32H7_ENCODER
-        )
-set(LIBRARY_DEPENDENCIES   HAL::STM32::H7::M7::RCC
-        HAL::STM32::H7::M7::GPIO
-        HAL::STM32::H7::M7::TIM
-        HAL::STM32::H7::M7::CORTEX
-        CMSIS::STM32::H7::M7
-        )
-set(LIBRARY_SOURCES        Encoder.cpp
-        )
+set(LIBRARY_NAME STM32H7_ENCODER)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::H7::M7::RCC
+    HAL::STM32::H7::M7::GPIO
+    HAL::STM32::H7::M7::TIM
+    HAL::STM32::H7::M7::CORTEX
+    CMSIS::STM32::H7::M7)
+set(LIBRARY_SOURCES Encoder.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 
@@ -18,4 +16,3 @@ get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
 add_library_option(${LIBRARY_NAME} DEBUG STM32_DEBUG)
-
