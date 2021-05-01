@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "PWM.h"
-#include "Debug.h"
+#include "PWM.hpp"
+#include <Debug/Debug.h>
 #include "stm32h7xx_hal.h"
 #include <math.h>   // for roundf
 #include <string.h> // for memset

@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-#include "FirstOrderHPF.h"
+#include "FirstOrderHPF.hpp"
 
 FirstOrderHPF::FirstOrderHPF(float Ts, float tau)
     : _Ts(Ts)

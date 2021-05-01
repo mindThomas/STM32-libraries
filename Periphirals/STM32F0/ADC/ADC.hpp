@@ -30,7 +30,7 @@
 #include "stm32f0xx_ll_dma.h"
 #include "stm32f0xx_ll_tim.h"
 
-#include <CircularBuffer.hpp>
+#include <CircularBuffer/CircularBuffer.hpp>
 
 /* Macro to get variable aligned on 32-bytes,needed for cache maintenance purpose */
 #if defined   (__GNUC__)        /* GNU Compiler */

@@ -16,34 +16,27 @@
  * ------------------------------------------
  */
  
-#ifndef DRIVERS_RCRECEIVER_H
-#define DRIVERS_RCRECEIVER_H
+#ifndef DRIVERS_SERVO_H
+#define DRIVERS_SERVO_H
 
-#include "InputCapture.h"
+#include <PWM/PWM.hpp>
 
-class RCReceiver : private InputCapture
+class Servo : private PWM
 {
 	
-private:
-	const float RECEIVER_PERIOD = 0.020;    // 50 Hz = 20 ms
-	const float RECEIVER_PERIOD_TOLERANCE = 0.002;    // +/- 2 ms tolerance
-
 public:
-	RCReceiver(InputCapture::timer_t timer, InputCapture::ic_channel_t channel, float min_ms = 1.0f, float max_ms = 2.0f);
-	//~RCReceiver(); // use base-class destructor
+	Servo(timer_t timer, pwm_channel_t channel, float min = -1.0f, float max = 1.0f, float min_ms = 1.0f, float max_ms = 2.0f, uint16_t range_resolution_steps = 2048);
+	
+	void Set(float value);
+	void Disable();
 
-	float Get(bool ClearAfterReading = false);
-	bool isActive(void);
-
-private:
-	bool VerifyPeriod(void);
-
-private:
-	float _min;
-	float _max;
-
-	float _prev_value;
-
+private:	
+	float _min_ms;
+	float _min_value;
+	float _max_ms;	
+	float _max_value;
+	float _ms_resolution;
+	
 };
 	
 	

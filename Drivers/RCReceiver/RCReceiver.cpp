@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-#include "RCReceiver.h"
+#include "RCReceiver.hpp"
 #include <math.h>
 
 RCReceiver::RCReceiver(InputCapture::timer_t timer, InputCapture::ic_channel_t channel, float min_ms, float max_ms)

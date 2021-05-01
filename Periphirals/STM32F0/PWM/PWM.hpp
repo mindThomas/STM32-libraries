@@ -28,7 +28,7 @@
 #include "stm32f0xx_ll_exti.h"
 #include "stm32f0xx_ll_tim.h"
 
-#include "IO.h"
+#include <IO/IO.hpp>
 
 #ifdef USE_FREERTOS
 #include "cmsis_os.h" // for semaphore support

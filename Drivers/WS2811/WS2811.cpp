@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "WS2811.h"
-#include "Debug.h"
+#include "WS2811.hpp"
+#include <Debug/Debug.h>
 #include "stm32h7xx_hal.h"
 #include <math.h>   // for roundf
 #include <string.h> // for memset

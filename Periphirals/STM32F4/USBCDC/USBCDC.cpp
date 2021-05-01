@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "USBCDC.h"
-#include "Debug.h"
+#include "USBCDC.hpp"
+#include <Debug/Debug.h>
 #include "cmsis_os.h" // for USB processing task
 #include "stm32f4xx_hal.h"
 

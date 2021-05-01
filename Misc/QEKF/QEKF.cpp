@@ -16,16 +16,15 @@
  * ------------------------------------------
  */
 
-#include "QEKF.h"
-#include "MathLib.h"
+#include "QEKF.hpp"
 #include "QEKF_coder.h"
 #include "QEKF_initialize.h"
 #include <cmath>
 #include <math.h>
 #include <string.h> // for memcpy
 
-#include "MathLib.h" // for matrix symmetrization
-#include "Quaternion.h"
+#include <MathLib/MathLib.h> // for matrix symmetrization
+#include <Quaternion/Quaternion.hpp>
 #include "arm_math.h"
 
 QEKF::QEKF(Parameters& params, Timer* microsTimer)

@@ -19,9 +19,9 @@
 #ifndef MPU9250_BUS_H
 #define MPU9250_BUS_H
 
-#include "IMU.h"
-#include "I2C.h"  // I2C library
-#include "SPI.h" // SPI Library
+#include <IMU/IMU.hpp>
+#include <I2C/I2C.hpp>  // I2C library
+#include <SPI/SPI.hpp> // SPI Library
 
 class MPU9250_Bus
 {

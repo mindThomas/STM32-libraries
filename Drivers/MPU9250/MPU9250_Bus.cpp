@@ -16,9 +16,9 @@
  * ------------------------------------------
  */
 
-#include "MPU9250_Bus.h"
-#include "I2C.h" // I2C library
-#include "SPI.h" // SPI Library
+#include "MPU9250_Bus.hpp"
+#include <I2C/I2C.hpp> // I2C library
+#include <SPI/SPI.hpp> // SPI Library
 
 /* writes a byte to MPU9250 register given a register address and data */
 bool MPU9250_I2C::writeRegister(uint8_t subAddress, uint8_t data)

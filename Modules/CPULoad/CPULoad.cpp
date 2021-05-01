@@ -16,10 +16,10 @@
  * ------------------------------------------
  */
 
-#include "CPULoad.h"
+#include "CPULoad.hpp"
 #include "cmsis_os.h" // for processing task
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 
 CPULoad::CPULoad(LSPC& lspc, uint32_t cpuLoadTaskPriority)
     : _lspc(lspc)

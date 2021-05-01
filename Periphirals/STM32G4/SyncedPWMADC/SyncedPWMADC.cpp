@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "SyncedPWMADC.h"
-#include "Debug.h"
+#include "SyncedPWMADC.hpp"
+#include <Debug/Debug.h>
 #include "stm32g4xx_hal.h"
 #include <math.h>   // for roundf
 #include <string.h> // for memset

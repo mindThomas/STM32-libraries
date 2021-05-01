@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "Timer.h"
-#include "Debug.h"
+#include "Timer.hpp"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 #include "stm32g4xx_hal.h"
 #include <cmath>

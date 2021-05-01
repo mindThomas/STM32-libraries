@@ -36,11 +36,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // https://github.com/kriswiner/MPU9250/blob/master/MPU9250BasicAHRS_t3.ino
 // https://github.com/TheChapu/GY-91/blob/master/MPU9250BasicAHRS.ino
 
-#include "MPU9250.h"
-#include "Debug.h"
-#include "I2C.h" // I2C library
-#include "IO.h"
-#include "SPI.h" // SPI Library
+#include "MPU9250.hpp"
+#include <Debug/Debug.h>
+#include <I2C/I2C.hpp> // I2C library
+#include <IO/IO.hpp>
+#include <SPI/SPI.hpp> // SPI Library
 #include "cmsis_os.h"
 #include <math.h>
 

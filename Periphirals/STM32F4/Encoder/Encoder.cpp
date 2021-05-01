@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "Encoder.h"
-#include "Debug.h"
+#include "Encoder.hpp"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 #include <string.h> // for memset
 

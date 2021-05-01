@@ -16,9 +16,9 @@
  * ------------------------------------------
  */
 
-#include "UART.h"
+#include "UART.hpp"
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 #include <string.h> // for memset
 

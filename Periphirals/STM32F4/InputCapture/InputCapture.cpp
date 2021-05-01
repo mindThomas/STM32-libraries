@@ -18,8 +18,8 @@
 
 /* Use input capture to measure time between rising and/or falling edges of an input */
 
-#include "InputCapture.h"
-#include "Debug.h"
+#include "InputCapture.hpp"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 #include <math.h>   // for roundf
 #include <string.h> // for memset

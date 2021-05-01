@@ -16,9 +16,9 @@
  * ------------------------------------------
  */
 
-#include "Timer.h"
+#include "Timer.hpp"
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 #include <cmath>
 #include <string.h> // for memset

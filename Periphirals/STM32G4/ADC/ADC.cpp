@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "ADC.h"
-#include "Debug.h"
+#include "ADC.hpp"
+#include <Debug/Debug.h>
 #include "stm32h7xx_hal.h"
 #include <string.h> // for memset
 

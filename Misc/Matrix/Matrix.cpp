@@ -17,7 +17,7 @@
  */
 
 #include "Matrix.hpp"
-#include "Debug.h"
+#include <Debug/Debug.h>
 #include <algorithm> // std::swap etc.
 #include <arm_math.h>
 #include <malloc.h>

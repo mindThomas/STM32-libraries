@@ -25,9 +25,9 @@
 #ifndef DEVICES_INA219_H
 #define DEVICES_INA219_H
 
-#include "IO.h"
-#include "I2C.h"
-#include "Debug.h"
+#include <IO/IO.hpp>
+#include <I2C/I2C.hpp>
+#include <Debug/Debug.h>
 
 
 class INA219 {

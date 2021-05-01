@@ -16,9 +16,9 @@
  * ------------------------------------------
  */
 
-#include "SPI.h"
+#include "SPI.hpp"
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 #include <math.h>
 #include <string.h> // for memset

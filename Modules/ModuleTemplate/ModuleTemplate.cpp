@@ -16,10 +16,10 @@
  * ------------------------------------------
  */
 
-#include "ModuleTemplate.h"
+#include "ModuleTemplate.hpp"
 #include "cmsis_os.h" // for processing task
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 
 ModuleTemplate::ModuleTemplate(uint32_t moduleTaskPriority)
     : _moduleTaskHandle(0)

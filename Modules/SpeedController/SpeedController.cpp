@@ -16,12 +16,12 @@
  * ------------------------------------------
  */
 
-#include "SpeedController.h"
-#include "MathLib.h"
+#include "SpeedController.hpp"
+#include <MathLib/MathLib.h>
 #include "cmsis_os.h" // for processing task
 #include <math.h>
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 
 int32_t SpeedController::EncoderDiff = 0;
 float   SpeedController::SpeedRaw;

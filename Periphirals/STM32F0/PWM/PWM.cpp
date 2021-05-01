@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "PWM.h"
-#include "Debug.h"
+#include "PWM.hpp"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 
 #include <math.h>   // for roundf

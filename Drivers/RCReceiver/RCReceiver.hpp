@@ -16,31 +16,34 @@
  * ------------------------------------------
  */
  
-#ifndef DEVICES_QUADRATURE_KNOB_H
-#define DEVICES_QUADRATURE_KNOB_H
+#ifndef DRIVERS_RCRECEIVER_H
+#define DRIVERS_RCRECEIVER_H
 
-#include "IO.h"
+#include "InputCapture.hpp"
 
-class QuadratureKnob
+class RCReceiver : private InputCapture
 {
-	public:
-		QuadratureKnob(GPIO_TypeDef * GPIOx_A, uint32_t GPIO_Pin_A, GPIO_TypeDef * GPIOx_B, uint32_t GPIO_Pin_B);
-		~QuadratureKnob();
-
-		int32_t Get();
-
-	public:
-		IO * sigA;
-		IO * sigB;
-
-		int32_t value;
-		uint8_t oldAB;
-
-	public:
-		static void InterruptHandler(void * params);
 	
-	private:
-		static const int8_t EncStates[16];
+private:
+	const float RECEIVER_PERIOD = 0.020;    // 50 Hz = 20 ms
+	const float RECEIVER_PERIOD_TOLERANCE = 0.002;    // +/- 2 ms tolerance
+
+public:
+	RCReceiver(InputCapture::timer_t timer, InputCapture::ic_channel_t channel, float min_ms = 1.0f, float max_ms = 2.0f);
+	//~RCReceiver(); // use base-class destructor
+
+	float Get(bool ClearAfterReading = false);
+	bool isActive(void);
+
+private:
+	bool VerifyPeriod(void);
+
+private:
+	float _min;
+	float _max;
+
+	float _prev_value;
+
 };
 	
 	

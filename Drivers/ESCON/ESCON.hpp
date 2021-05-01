@@ -20,10 +20,10 @@
 #define DEVICES_ESCON_H
 
 #include "stm32h7xx_hal.h"
-#include "Motor.h"
-#include "PWM.h"
-#include "IO.h"
-#include "ADC.h"
+#include <Motor/Motor.hpp>
+#include <PWM/PWM.hpp>
+#include <IO/IO.hpp>
+#include <ADC/ADC.hpp>
 
 class ESCON : private Motor
 {

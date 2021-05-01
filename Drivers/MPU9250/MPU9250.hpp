@@ -33,12 +33,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #ifndef MPU9250_h
 #define MPU9250_h
 
-#include "IMU.h"
-#include "IO.h"
-#include "I2C.h"  // I2C library
-#include "SPI.h" // SPI Library
+#include <IMU/IMU.hpp>
+#include <IO/IO.hpp>
+#include <I2C/I2C.hpp>  // I2C library
+#include <SPI/SPI.hpp> // SPI Library
 #include "cmsis_os.h"
-#include "MPU9250_Bus.h"
+#include "MPU9250_Bus.hpp"
 
 class MPU9250 : public IMU {
 	public:

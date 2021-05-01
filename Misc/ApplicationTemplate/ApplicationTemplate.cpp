@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-#include "ApplicationTemplate.h"
+#include "ApplicationTemplate.hpp"
 #include "cmsis_os.h"
 
 ApplicationTemplate::ApplicationTemplate()

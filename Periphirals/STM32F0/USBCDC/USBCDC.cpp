@@ -16,9 +16,9 @@
  * ------------------------------------------
  */
 
-#include "USBCDC.h"
+#include "USBCDC.hpp"
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 
 #include "usbd_cdc.h"
 #include "usbd_cdc_if.h"

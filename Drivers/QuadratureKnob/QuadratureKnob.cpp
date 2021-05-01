@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "QuadratureKnob.h"
-#include "IO.h"
+#include "QuadratureKnob.hpp"
+#include <IO/IO.hpp>
 
 QuadratureKnob::QuadratureKnob(GPIO_TypeDef* GPIOx_A, uint32_t GPIO_Pin_A, GPIO_TypeDef* GPIOx_B, uint32_t GPIO_Pin_B)
     : value(0)

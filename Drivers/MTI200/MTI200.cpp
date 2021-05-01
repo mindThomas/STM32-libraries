@@ -16,10 +16,10 @@
  * ------------------------------------------
  */
 
-#include "MTI200.h"
-#include "Debug.h"
-#include "Quaternion.h"
-#include "UART.h"
+#include "MTI200.hpp"
+#include <Debug/Debug.h>
+#include <Quaternion/Quaternion.hpp>
+#include <UART/UART.hpp>
 #include "cmsis_os.h"
 #include <algorithm>
 

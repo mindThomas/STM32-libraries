@@ -16,10 +16,10 @@
  * ------------------------------------------
  */
 
-#include "ADC.h"
+#include "ADC.hpp"
 #include "stm32f0xx_hal_timebase_tim.h" // for HAL_GetHighResTick()
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 #include <string.h> // for memset
 
 ADC::hardware_resource_t* ADC::resADC1      = 0;

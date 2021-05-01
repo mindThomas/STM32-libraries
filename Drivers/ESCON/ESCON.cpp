@@ -18,13 +18,13 @@
 
 #include "stm32h7xx_hal.h"
 
-#include "ADC.h"
-#include "Debug.h"
-#include "ESCON.h"
-#include "Encoder.h"
-#include "IO.h"
-#include "Motor.h"
-#include "PWM.h"
+#include <ADC/ADC.hpp>
+#include <Debug/Debug.h>
+#include <ESCON/ESCON.hpp>
+#include <Encoder/Encoder.hpp>
+#include <IO/IO.hpp>
+#include <Motor/Motor.hpp>
+#include <PWM/PWM.hpp>
 
 ESCON::ESCON(PWM* TorqueSetpoint, IO* EnablePin, Encoder* encoder, float MaxCurrent, float TorqueConstant,
              float GearRatio, uint16_t EncoderTicksPrRev, float MaxMotorSpeed)

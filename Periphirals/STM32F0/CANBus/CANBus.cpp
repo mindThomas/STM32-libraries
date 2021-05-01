@@ -16,10 +16,10 @@
  * ------------------------------------------
  */
 
-#include "CANBus.h"
+#include "CANBus.hpp"
 #include "stm32f0xx_hal_timebase_tim.h" // for HAL_GetHighResTick()
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 #include "Priorities.h"
 #include <math.h>
 #include <string.h> // for memset

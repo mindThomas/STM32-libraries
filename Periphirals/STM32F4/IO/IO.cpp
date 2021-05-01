@@ -20,7 +20,7 @@
 #include <IO/IO.hpp>
 
 #ifdef STM32H7_IO_USE_DEBUG
-#include "Debug/Debug.h"
+#include <Debug/Debug.h>
 #else
 #define ERROR(msg) ((void)0U); // not implemented
 #endif

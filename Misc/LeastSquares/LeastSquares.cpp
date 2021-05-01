@@ -16,8 +16,8 @@
  * ------------------------------------------
  */
 
-#include "LeastSquares.h"
-#include "Debug.h"
+#include "LeastSquares.hpp"
+#include <Debug/Debug.h>
 #include <math.h>
 #include <stdlib.h>
 

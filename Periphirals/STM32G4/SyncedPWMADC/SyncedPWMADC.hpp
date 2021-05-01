@@ -26,8 +26,8 @@
 #include "stm32g4xx_hal_adc_ex.h"
 #include "stm32g4xx_hal_dma.h"
 
-#include "IO.h"
-#include "Encoder.h"
+#include <IO/IO.hpp>
+#include <Encoder/Encoder.hpp>
 #include <unordered_map>
 
 /* To Do
@@ -57,7 +57,7 @@
 
 class SyncedPWMADC
 {
-	#include "SyncedPWMADC_Config.h"
+	#include "SyncedPWMADC_Config.hpp"
 
 	private:
 		const enum : uint8_t {

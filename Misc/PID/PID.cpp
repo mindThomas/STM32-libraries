@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-#include "PID.h"
+#include "PID.hpp"
 
 PID::PID(const float Kp, const float Ki, const float Kd, Timer* microsTimer)
     : Kp_(Kp)

@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-#include "Servo.h"
+#include "Servo.hpp"
 #include <math.h>
 
 Servo::Servo(timer_t timer, pwm_channel_t channel, float min, float max, float min_ms, float max_ms,

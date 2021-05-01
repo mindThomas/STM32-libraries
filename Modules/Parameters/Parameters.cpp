@@ -16,9 +16,9 @@
  * ------------------------------------------
  */
 
-#include "Parameters.h"
-#include "Debug.h"
-#include "EEPROM.h"
+#include "Parameters.hpp"
+#include <Debug/Debug.h>
+#include <EEPROM/EEPROM.hpp>
 
 // Create global parameter variable in project scope
 static Parameters* paramsGlobal = 0;

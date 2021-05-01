@@ -16,10 +16,10 @@
  * ------------------------------------------
  */
 
-#include "Heartbeat.h"
+#include "Heartbeat.hpp"
 #include "cmsis_os.h" // for processing task
 
-#include "Debug.h"
+#include <Debug/Debug.h>
 
 Heartbeat::Heartbeat(uint16_t heartbeatFrequency, LSPC& lspc, uint32_t heartbeatTaskPriority)
     : _heartbeatFrequency(heartbeatFrequency)

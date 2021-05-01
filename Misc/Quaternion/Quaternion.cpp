@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-#include "Quaternion.h"
+#include "Quaternion.hpp"
 
 #include <arm_math.h>
 #include <math.h>

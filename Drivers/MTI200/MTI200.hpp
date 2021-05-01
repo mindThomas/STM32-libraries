@@ -19,8 +19,8 @@
 #ifndef DEVICES_MTI200_H
 #define DEVICES_MTI200_H
 
-#include "IMU.h"
-#include "UART.h"
+#include <IMU/IMU.hpp>
+#include <UART/UART.hpp>
 
 /* Include Xsens library */
 #include "xbusparser.h"

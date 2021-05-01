@@ -7,9 +7,9 @@
 #include "SocketBase.hpp"
 #include "cmsis_os.h" // for task creation
 #if defined(LSPC_USB)
-#include "USBCDC.h"
+#include "USBCDC.hpp"
 #elif defined(LSPC_UART)
-#include "UART.h"
+#include "UART.hpp"
 #endif
 #include "MessageTypes.h"
 
