@@ -15,63 +15,70 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #include "PID.h"
 
-PID::PID(const float Kp, const float Ki, const float Kd, Timer * microsTimer) : Kp_(Kp), Ki_(Ki), Kd_(Kd), _microsTimer(microsTimer)
+PID::PID(const float Kp, const float Ki, const float Kd, Timer* microsTimer)
+    : Kp_(Kp)
+    , Ki_(Ki)
+    , Kd_(Kd)
+    , _microsTimer(microsTimer)
 {
-	Reset();
+    Reset();
 }
 
-PID::PID(const float Kp, const float Ki, const float Kd) : Kp_(Kp), Ki_(Ki), Kd_(Kd), _microsTimer(0)
+PID::PID(const float Kp, const float Ki, const float Kd)
+    : Kp_(Kp)
+    , Ki_(Ki)
+    , Kd_(Kd)
+    , _microsTimer(0)
 {
-	Reset();
+    Reset();
 }
 
-PID::~PID()
-{
-}
+PID::~PID() {}
 
 void PID::Reset(void)
 {
-	prev_error_ = 0;
-	integral_ = 0;
+    prev_error_ = 0;
+    integral_   = 0;
 
-	if (_microsTimer)
-		_prevTimerValue = _microsTimer->Get();
-	else
-		_prevTimerValue = 0;
+    if (_microsTimer)
+        _prevTimerValue = _microsTimer->Get();
+    else
+        _prevTimerValue = 0;
 }
 
 void PID::SetPID(float Kp, float Ki, float Kd)
 {
-	Kp_ = Kp;
-	Ki_ = Ki;
-	Kd_ = Kd;
+    Kp_ = Kp;
+    Ki_ = Ki;
+    Kd_ = Kd;
 }
 
 float PID::Step(float state, float ref, bool integrator_enabled)
 {
-	float dt;
+    float dt;
 
-	if (!_microsTimer) return 0; // timer not defined
-	dt = _microsTimer->GetDeltaTime(_prevTimerValue);
-	_prevTimerValue = _microsTimer->Get();
+    if (!_microsTimer)
+        return 0; // timer not defined
+    dt              = _microsTimer->GetDeltaTime(_prevTimerValue);
+    _prevTimerValue = _microsTimer->Get();
 
-	return Step(state, ref, dt, integrator_enabled);
+    return Step(state, ref, dt, integrator_enabled);
 }
 
 float PID::Step(float state, float ref, float dt, bool integrator_enabled)
 {
-	float error = ref - state;
+    float error = ref - state;
 
-	float derror = 0;
-	if (dt > 0)
-		derror = (error - prev_error_) / dt;
+    float derror = 0;
+    if (dt > 0)
+        derror = (error - prev_error_) / dt;
 
-	if (integrator_enabled)
-		integral_ += dt * error;
+    if (integrator_enabled)
+        integral_ += dt * error;
 
-	float out = Kp_*error + Ki_*integral_ + Kd_*derror;
-	return out;
+    float out = Kp_ * error + Ki_ * integral_ + Kd_ * derror;
+    return out;
 }

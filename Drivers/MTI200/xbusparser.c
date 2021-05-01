@@ -16,24 +16,24 @@
  */
 
 #include "xbusparser.h"
+#include "Debug.h"
+#include "FreeRTOS.h"
 #include "xbusdef.h"
 #include "xbusutility.h"
 #include <stdlib.h>
 #include <string.h>
-#include "FreeRTOS.h"
-#include "Debug.h"
 
 /*! \brief XbusParser states. */
 enum XbusParserState
 {
-	XBPS_Preamble,          /*!< \brief Looking for preamble. */
-	XBPS_BusId,             /*!< \brief Waiting for bus ID. */
-	XBPS_MessageId,         /*!< \brief Waiting for message ID. */
-	XBPS_Length,            /*!< \brief Waiting for length. */
-	XBPS_ExtendedLengthMsb, /*!< \brief Waiting for extended length MSB*/
-	XBPS_ExtendedLengthLsb, /*!< \brief Waiting for extended length LSB*/
-	XBPS_Payload,           /*!< \brief Reading payload. */
-	XBPS_Checksum           /*!< \brief Waiting for checksum. */
+    XBPS_Preamble,          /*!< \brief Looking for preamble. */
+    XBPS_BusId,             /*!< \brief Waiting for bus ID. */
+    XBPS_MessageId,         /*!< \brief Waiting for message ID. */
+    XBPS_Length,            /*!< \brief Waiting for length. */
+    XBPS_ExtendedLengthMsb, /*!< \brief Waiting for extended length MSB*/
+    XBPS_ExtendedLengthLsb, /*!< \brief Waiting for extended length LSB*/
+    XBPS_Payload,           /*!< \brief Reading payload. */
+    XBPS_Checksum           /*!< \brief Waiting for checksum. */
 };
 
 /*!
@@ -41,16 +41,16 @@ enum XbusParserState
  */
 struct XbusParser
 {
-	/*! \brief Callbacks for memory management, and message handling. */
-	struct XbusParserCallback callbacks;
-	/*! \brief Storage for the current message being received. */
-	struct XbusMessage currentMessage;
-	/*! \brief The number of bytes of payload received for the current message. */
-	uint16_t payloadReceived;
-	/*! \brief The calculated checksum for the current message. */
-	uint8_t checksum;
-	/*! \brief The state of the parser. */
-	enum XbusParserState state;
+    /*! \brief Callbacks for memory management, and message handling. */
+    struct XbusParserCallback callbacks;
+    /*! \brief Storage for the current message being received. */
+    struct XbusMessage currentMessage;
+    /*! \brief The number of bytes of payload received for the current message. */
+    uint16_t payloadReceived;
+    /*! \brief The calculated checksum for the current message. */
+    uint8_t checksum;
+    /*! \brief The state of the parser. */
+    enum XbusParserState state;
 };
 
 /*!
@@ -58,7 +58,7 @@ struct XbusParser
  */
 size_t XbusParser_mem(void)
 {
-	return sizeof(struct XbusParser);
+    return sizeof(struct XbusParser);
 }
 
 /*!
@@ -71,12 +71,11 @@ size_t XbusParser_mem(void)
  */
 struct XbusParser* XbusParser_create(struct XbusParserCallback const* callback)
 {
-	void* mem = pvPortMalloc(XbusParser_mem());
-	if (mem)
-	{
-		return XbusParser_init(mem, callback);
-	}
-	return NULL;
+    void* mem = pvPortMalloc(XbusParser_mem());
+    if (mem) {
+        return XbusParser_init(mem, callback);
+    }
+    return NULL;
 }
 
 /*!
@@ -84,7 +83,7 @@ struct XbusParser* XbusParser_create(struct XbusParserCallback const* callback)
  */
 void XbusParser_destroy(struct XbusParser* parser)
 {
-	vPortFree(parser);
+    vPortFree(parser);
 }
 
 /*!
@@ -97,13 +96,13 @@ void XbusParser_destroy(struct XbusParser* parser)
  */
 struct XbusParser* XbusParser_init(void* parserMem, struct XbusParserCallback const* callback)
 {
-	struct XbusParser* parser = (struct XbusParser*)parserMem;
-	parser->state = XBPS_Preamble;
-	parser->callbacks.allocateBuffer = callback->allocateBuffer;
-	parser->callbacks.deallocateBuffer = callback->deallocateBuffer;
-	parser->callbacks.handleMessage = callback->handleMessage;
-	parser->callbacks.parameter = callback->parameter;
-	return parser;
+    struct XbusParser* parser          = (struct XbusParser*)parserMem;
+    parser->state                      = XBPS_Preamble;
+    parser->callbacks.allocateBuffer   = callback->allocateBuffer;
+    parser->callbacks.deallocateBuffer = callback->deallocateBuffer;
+    parser->callbacks.handleMessage    = callback->handleMessage;
+    parser->callbacks.parameter        = callback->parameter;
+    return parser;
 }
 
 /*!
@@ -113,17 +112,14 @@ struct XbusParser* XbusParser_init(void* parserMem, struct XbusParserCallback co
  */
 static void parseDeviceId(struct XbusParser* parser, uint8_t const* rawData)
 {
-	uint32_t* deviceId = parser->callbacks.allocateBuffer(sizeof(uint32_t));
-	if (deviceId)
-	{
-		XbusUtility_readU32(deviceId, rawData);
-		parser->currentMessage.data = deviceId;
-		parser->currentMessage.length = 1;
-	}
-	else
-	{
-		parser->currentMessage.data = NULL;
-	}
+    uint32_t* deviceId = parser->callbacks.allocateBuffer(sizeof(uint32_t));
+    if (deviceId) {
+        XbusUtility_readU32(deviceId, rawData);
+        parser->currentMessage.data   = deviceId;
+        parser->currentMessage.length = 1;
+    } else {
+        parser->currentMessage.data = NULL;
+    }
 }
 
 /*!
@@ -134,24 +130,20 @@ static void parseDeviceId(struct XbusParser* parser, uint8_t const* rawData)
  */
 static void parseOutputConfig(struct XbusParser* parser, uint8_t const* rawData)
 {
-	uint8_t fields = parser->currentMessage.length / 4;
-	struct OutputConfiguration* conf = parser->callbacks.allocateBuffer(fields * sizeof(struct OutputConfiguration));
-	if (conf)
-	{
-		parser->currentMessage.data = conf;
-		parser->currentMessage.length = fields;
+    uint8_t                     fields = parser->currentMessage.length / 4;
+    struct OutputConfiguration* conf   = parser->callbacks.allocateBuffer(fields * sizeof(struct OutputConfiguration));
+    if (conf) {
+        parser->currentMessage.data   = conf;
+        parser->currentMessage.length = fields;
 
-		for (int i = 0; i < fields; ++i)
-		{
-			rawData = XbusUtility_readU16((uint16_t*)&conf->dtype, rawData);
-			rawData = XbusUtility_readU16(&conf->freq, rawData);
-			++conf;
-		}
-	}
-	else
-	{
-		parser->currentMessage.data = NULL;
-	}
+        for (int i = 0; i < fields; ++i) {
+            rawData = XbusUtility_readU16((uint16_t*)&conf->dtype, rawData);
+            rawData = XbusUtility_readU16(&conf->freq, rawData);
+            ++conf;
+        }
+    } else {
+        parser->currentMessage.data = NULL;
+    }
 }
 
 /*!
@@ -163,24 +155,23 @@ static void parseOutputConfig(struct XbusParser* parser, uint8_t const* rawData)
  */
 static void parseMessagePayload(struct XbusParser* parser)
 {
-	uint8_t const* const rawData = parser->currentMessage.data;
-	switch (parser->currentMessage.mid)
-	{
-		default:
-			// Leave parsing and memory management to user code
-			return;
+    uint8_t const* const rawData = parser->currentMessage.data;
+    switch (parser->currentMessage.mid) {
+        default:
+            // Leave parsing and memory management to user code
+            return;
 
-		case XMID_DeviceId:
-			parseDeviceId(parser, rawData);
-			break;
+        case XMID_DeviceId:
+            parseDeviceId(parser, rawData);
+            break;
 
-		case XMID_OutputConfig:
-			parseOutputConfig(parser, rawData);
-			break;
-	}
+        case XMID_OutputConfig:
+            parseOutputConfig(parser, rawData);
+            break;
+    }
 
-	if (rawData)
-		parser->callbacks.deallocateBuffer(rawData);
+    if (rawData)
+        parser->callbacks.deallocateBuffer(rawData);
 }
 
 /*!
@@ -191,8 +182,8 @@ static void parseMessagePayload(struct XbusParser* parser)
  */
 void prepareForPayload(struct XbusParser* parser)
 {
-	parser->payloadReceived = 0;
-	parser->currentMessage.data = parser->callbacks.allocateBuffer(parser->currentMessage.length);
+    parser->payloadReceived     = 0;
+    parser->currentMessage.data = parser->callbacks.allocateBuffer(parser->currentMessage.length);
 }
 
 /*!
@@ -203,88 +194,74 @@ void prepareForPayload(struct XbusParser* parser)
  */
 void XbusParser_parseByte(struct XbusParser* parser, const uint8_t byte)
 {
-	switch (parser->state)
-	{
-		case XBPS_Preamble:
-			if (byte == XBUS_PREAMBLE)
-			{
-				parser->checksum = 0;
-				parser->state = XBPS_BusId;
-			}
-			break;
+    switch (parser->state) {
+        case XBPS_Preamble:
+            if (byte == XBUS_PREAMBLE) {
+                parser->checksum = 0;
+                parser->state    = XBPS_BusId;
+            }
+            break;
 
-		case XBPS_BusId:
-			parser->checksum += byte;
-			parser->state = XBPS_MessageId;
-			break;
+        case XBPS_BusId:
+            parser->checksum += byte;
+            parser->state = XBPS_MessageId;
+            break;
 
-		case XBPS_MessageId:
-			parser->checksum += byte;
-			parser->currentMessage.mid = (enum XsMessageId)byte;
-			parser->state = XBPS_Length;
-			break;
+        case XBPS_MessageId:
+            parser->checksum += byte;
+            parser->currentMessage.mid = (enum XsMessageId)byte;
+            parser->state              = XBPS_Length;
+            break;
 
-		case XBPS_Length:
-			parser->checksum += byte;
-			if (byte == XBUS_NO_PAYLOAD)
-			{
-				parser->currentMessage.length = byte;
-				parser->currentMessage.data = NULL;
-				parser->state = XBPS_Checksum;
-			}
-			else if (byte < XBUS_EXTENDED_LENGTH)
-			{
-				parser->currentMessage.length = byte;
-				prepareForPayload(parser);
-				parser->state = XBPS_Payload;
-			}
-			else
-			{
-				parser->state = XBPS_ExtendedLengthMsb;
-			}
-			break;
+        case XBPS_Length:
+            parser->checksum += byte;
+            if (byte == XBUS_NO_PAYLOAD) {
+                parser->currentMessage.length = byte;
+                parser->currentMessage.data   = NULL;
+                parser->state                 = XBPS_Checksum;
+            } else if (byte < XBUS_EXTENDED_LENGTH) {
+                parser->currentMessage.length = byte;
+                prepareForPayload(parser);
+                parser->state = XBPS_Payload;
+            } else {
+                parser->state = XBPS_ExtendedLengthMsb;
+            }
+            break;
 
-		case XBPS_ExtendedLengthMsb:
-			parser->checksum += byte;
-			parser->currentMessage.length = ((uint16_t)byte) << 8;
-			parser->state = XBPS_ExtendedLengthLsb;
-			break;
+        case XBPS_ExtendedLengthMsb:
+            parser->checksum += byte;
+            parser->currentMessage.length = ((uint16_t)byte) << 8;
+            parser->state                 = XBPS_ExtendedLengthLsb;
+            break;
 
-		case XBPS_ExtendedLengthLsb:
-			parser->checksum += byte;
-			parser->currentMessage.length |= byte;
-			prepareForPayload(parser);
-			parser->state = XBPS_Payload;
-			break;
+        case XBPS_ExtendedLengthLsb:
+            parser->checksum += byte;
+            parser->currentMessage.length |= byte;
+            prepareForPayload(parser);
+            parser->state = XBPS_Payload;
+            break;
 
-		case XBPS_Payload:
-			parser->checksum += byte;
-			if (parser->currentMessage.data)
-			{
-				((uint8_t*)parser->currentMessage.data)[parser->payloadReceived] = byte;
-			}
-			if (++parser->payloadReceived == parser->currentMessage.length)
-			{
-				parser->state = XBPS_Checksum;
-			}
-			break;
+        case XBPS_Payload:
+            parser->checksum += byte;
+            if (parser->currentMessage.data) {
+                ((uint8_t*)parser->currentMessage.data)[parser->payloadReceived] = byte;
+            }
+            if (++parser->payloadReceived == parser->currentMessage.length) {
+                parser->state = XBPS_Checksum;
+            }
+            break;
 
-		case XBPS_Checksum:
-			parser->checksum += byte;
-			if ((parser->checksum == 0) &&
-					((parser->currentMessage.length == 0) ||
-					 parser->currentMessage.data))
-			{
-				parseMessagePayload(parser);
-				parser->callbacks.handleMessage(parser->callbacks.parameter, &parser->currentMessage);
-			}
-			else if (parser->currentMessage.data)
-			{
-				parser->callbacks.deallocateBuffer(parser->currentMessage.data);
-			}
-			parser->state = XBPS_Preamble;
-			break;
-	}
+        case XBPS_Checksum:
+            parser->checksum += byte;
+            if ((parser->checksum == 0) && ((parser->currentMessage.length == 0) || parser->currentMessage.data)) {
+                parseMessagePayload(parser);
+                parser->callbacks.handleMessage(parser->callbacks.parameter, &parser->currentMessage);
+            } else if (parser->currentMessage.data) {
+                parser->callbacks.deallocateBuffer(parser->currentMessage.data);
+            }
+            parser->state = XBPS_Preamble;
+            break;
+    }
 }
 
 /*!
@@ -292,9 +269,7 @@ void XbusParser_parseByte(struct XbusParser* parser, const uint8_t byte)
  */
 void XbusParser_parseBuffer(struct XbusParser* parser, uint8_t const* buf, size_t bufSize)
 {
-	for (size_t i = 0; i < bufSize; ++i)
-	{
-		XbusParser_parseByte(parser, buf[i]);
-	}
+    for (size_t i = 0; i < bufSize; ++i) {
+        XbusParser_parseByte(parser, buf[i]);
+    }
 }
-

@@ -15,15 +15,9 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#include "MotorDriver.h"
- 
-MotorDriver::MotorDriver()
-{
-	
-}
 
-MotorDriver::~MotorDriver()
-{
-	
-}
+#include "MotorDriver.h"
+
+MotorDriver::MotorDriver() {}
+
+MotorDriver::~MotorDriver() {}

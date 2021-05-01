@@ -21,68 +21,68 @@
 //
 float det2x2_robust(const float x[4])
 {
-  float y;
-  int ix;
-  float b_x[4];
-  signed char ipiv[2];
-  int iy;
-  boolean_T isodd;
-  int k;
-  float temp;
-  for (ix = 0; ix < 4; ix++) {
-    b_x[ix] = x[ix];
-  }
-
-  for (ix = 0; ix < 2; ix++) {
-    ipiv[ix] = (signed char)(1 + ix);
-  }
-
-  ix = 0;
-  if ((float)fabs((double)x[1]) > (float)fabs((double)x[0])) {
-    ix = 1;
-  }
-
-  if (x[ix] != 0.0F) {
-    if (ix != 0) {
-      ipiv[0] = 2;
-      ix = 0;
-      iy = 1;
-      for (k = 0; k < 2; k++) {
-        temp = b_x[ix];
-        b_x[ix] = b_x[iy];
-        b_x[iy] = temp;
-        ix += 2;
-        iy += 2;
-      }
+    float       y;
+    int         ix;
+    float       b_x[4];
+    signed char ipiv[2];
+    int         iy;
+    boolean_T   isodd;
+    int         k;
+    float       temp;
+    for (ix = 0; ix < 4; ix++) {
+        b_x[ix] = x[ix];
     }
 
-    b_x[1] /= b_x[0];
-  }
+    for (ix = 0; ix < 2; ix++) {
+        ipiv[ix] = (signed char)(1 + ix);
+    }
 
-  if (b_x[2] != 0.0F) {
-    b_x[3] += b_x[1] * -b_x[2];
-  }
+    ix = 0;
+    if ((float)fabs((double)x[1]) > (float)fabs((double)x[0])) {
+        ix = 1;
+    }
 
-  y = b_x[0] * b_x[3];
-  isodd = false;
-  if (ipiv[0] > 1) {
-    isodd = true;
-  }
+    if (x[ix] != 0.0F) {
+        if (ix != 0) {
+            ipiv[0] = 2;
+            ix      = 0;
+            iy      = 1;
+            for (k = 0; k < 2; k++) {
+                temp    = b_x[ix];
+                b_x[ix] = b_x[iy];
+                b_x[iy] = temp;
+                ix += 2;
+                iy += 2;
+            }
+        }
 
-  if (isodd) {
-    y = -y;
-  }
+        b_x[1] /= b_x[0];
+    }
 
-  return y;
+    if (b_x[2] != 0.0F) {
+        b_x[3] += b_x[1] * -b_x[2];
+    }
+
+    y     = b_x[0] * b_x[3];
+    isodd = false;
+    if (ipiv[0] > 1) {
+        isodd = true;
+    }
+
+    if (isodd) {
+        y = -y;
+    }
+
+    return y;
 }
 
 float det2x2_fast(const float x[4])
 {
-	const float& a = x[0];
-	const float& b = x[1];
-	const float& c = x[2];
-	const float& d = x[3];
-	return a*d - b*c;
+    const float& a = x[0];
+    const float& b = x[1];
+    const float& c = x[2];
+    const float& d = x[3];
+    return a * d - b * c;
 }
 
 //

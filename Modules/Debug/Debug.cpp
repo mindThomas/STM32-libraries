@@ -15,7 +15,7 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #include <Debug/Debug.h>
 
 #include <IO/IO.hpp>
@@ -30,61 +30,62 @@ void HAL_Delay(uint32_t Delay); // forward declaration
 #endif
 
 #ifdef DEBUG_PRINTF_ENABLED
-	#ifdef DEBUG_PRINTF_WITHOUT_LSPC
-		#include "UART.h"
-	#else
-		#include "LSPC.hpp"
-	#endif
+#ifdef DEBUG_PRINTF_WITHOUT_LSPC
+#include "UART.h"
+#else
+#include "LSPC.hpp"
+#endif
 #endif
 
-bool Debug::handleCreated = false;
+bool  Debug::handleCreated = false;
 Debug Debug::debugHandle;
 
 // Necessary to export for compiler such that the Error_Handler function can be called by C code
 extern "C" void Error_Handler(void);
-extern "C" void Debug_print(const char * msg);
+extern "C" void Debug_print(const char* msg);
 extern "C" void Debug_Pulse();
 
-Debug::Debug() : com_(0), debugPulsePin_(0)
+Debug::Debug()
+    : com_(0)
+    , debugPulsePin_(0)
 {
-	if (handleCreated) {
-		ERROR("Debug object already created");
-		return;
-	}
+    if (handleCreated) {
+        ERROR("Debug object already created");
+        return;
+    }
 
-	handleCreated = true;
+    handleCreated = true;
 }
 
-Debug::~Debug()
-{
-}
+Debug::~Debug() {}
 
-void Debug::AssignDebugCOM(void * com)
+void Debug::AssignDebugCOM(void* com)
 {
-	debugHandle.com_ = com;
+    debugHandle.com_ = com;
 
 #ifdef DEBUG_PRINTF_ENABLED
-	if (!com) {
-		ERROR("COM object does not exist");
-		return;
-	}
+    if (!com) {
+        ERROR("COM object does not exist");
+        return;
+    }
 #endif
 
 #ifdef DEBUG_PRINTF_ENABLED
-	debugHandle.currentBufferLocation_ = 0;
-	memset(debugHandle.messageBuffer_, 0, MAX_DEBUG_TEXT_LENGTH);
+    debugHandle.currentBufferLocation_ = 0;
+    memset(debugHandle.messageBuffer_, 0, MAX_DEBUG_TEXT_LENGTH);
 #ifdef USE_FREERTOS
-	debugHandle.mutex_ = xSemaphoreCreateBinary();
-	if (debugHandle.mutex_ == NULL) {
-		ERROR("Could not create Debug mutex");
-		return;
-	}
-	vQueueAddToRegistry(debugHandle.mutex_, "Debug mutex");
-	xSemaphoreGive( debugHandle.mutex_ ); // give the semaphore the first time
+    debugHandle.mutex_ = xSemaphoreCreateBinary();
+    if (debugHandle.mutex_ == NULL) {
+        ERROR("Could not create Debug mutex");
+        return;
+    }
+    vQueueAddToRegistry(debugHandle.mutex_, "Debug mutex");
+    xSemaphoreGive(debugHandle.mutex_); // give the semaphore the first time
 
-	#ifndef DEBUG_PRINTF_WITHOUT_LSPC
-	xTaskCreate( Debug::PackageGeneratorThread, (char *)"Debug transmitter", debugHandle.THREAD_STACK_SIZE, (void*) &debugHandle, debugHandle.THREAD_PRIORITY, &debugHandle._TaskHandle);
-	#endif
+#ifndef DEBUG_PRINTF_WITHOUT_LSPC
+    xTaskCreate(Debug::PackageGeneratorThread, (char*)"Debug transmitter", debugHandle.THREAD_STACK_SIZE,
+                (void*)&debugHandle, debugHandle.THREAD_PRIORITY, &debugHandle._TaskHandle);
+#endif
 #endif
 #endif
 }
@@ -92,198 +93,216 @@ void Debug::AssignDebugCOM(void * com)
 #ifdef DEBUG_PRINTF_ENABLED
 #ifdef USE_FREERTOS
 #ifndef DEBUG_PRINTF_WITHOUT_LSPC
-void Debug::PackageGeneratorThread(void * pvParameters)
+void Debug::PackageGeneratorThread(void* pvParameters)
 {
-	Debug * debug = (Debug *)pvParameters;
+    Debug* debug = (Debug*)pvParameters;
 
-	while (1)
-	{
-		delay(1);
-		xSemaphoreTake( debug->mutex_, ( TickType_t ) portMAX_DELAY ); // take debug mutex
-		if (debug->currentBufferLocation_ > 0) {
-			((LSPC*)debug->com_)->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t *)debug->messageBuffer_, debug->currentBufferLocation_);
-			debug->currentBufferLocation_ = 0;
-		}
-		xSemaphoreGive( debug->mutex_ ); // give hardware resource back
-	}
+    while (1) {
+        delay(1);
+        xSemaphoreTake(debug->mutex_, (TickType_t)portMAX_DELAY); // take debug mutex
+        if (debug->currentBufferLocation_ > 0) {
+            ((LSPC*)debug->com_)
+              ->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t*)debug->messageBuffer_,
+                              debug->currentBufferLocation_);
+            debug->currentBufferLocation_ = 0;
+        }
+        xSemaphoreGive(debug->mutex_); // give hardware resource back
+    }
 }
 #endif
 #endif
 #endif
 
-void Debug::Message(const char * msg)
+void Debug::Message(const char* msg)
 {
 #ifdef DEBUG_PRINTF_ENABLED
-	if (!debugHandle.com_) return;
+    if (!debugHandle.com_)
+        return;
 #ifdef DEBUG_PRINTF_WITHOUT_LSPC
-	#ifdef USE_FREERTOS
-	xSemaphoreTake( debugHandle.mutex_, ( TickType_t ) portMAX_DELAY ); // take debug mutex
-	#endif
+#ifdef USE_FREERTOS
+    xSemaphoreTake(debugHandle.mutex_, (TickType_t)portMAX_DELAY); // take debug mutex
+#endif
 
-	uint8_t * msgPtr = (uint8_t *)msg;
-	uint16_t stringLength = strlen(msg);
-	if (!((UART*)debugHandle.com_)->Write(msgPtr, stringLength)) return;
+    uint8_t* msgPtr       = (uint8_t*)msg;
+    uint16_t stringLength = strlen(msg);
+    if (!((UART*)debugHandle.com_)->Write(msgPtr, stringLength))
+        return;
 
-	#ifdef USE_FREERTOS
-	xSemaphoreGive( debugHandle.mutex_ ); // give hardware resource back
-	#endif
+#ifdef USE_FREERTOS
+    xSemaphoreGive(debugHandle.mutex_); // give hardware resource back
+#endif
 #else
-	if (!((LSPC*)debugHandle.com_)->Connected()) return;
+    if (!((LSPC*)debugHandle.com_)->Connected())
+        return;
 
-	#ifdef USE_FREERTOS
-	xSemaphoreTake( debugHandle.mutex_, ( TickType_t ) portMAX_DELAY ); // take debug mutex
-	#endif
+#ifdef USE_FREERTOS
+    xSemaphoreTake(debugHandle.mutex_, (TickType_t)portMAX_DELAY); // take debug mutex
+#endif
 
-	uint16_t stringLength = strlen(msg);
-	if (stringLength > MAX_DEBUG_TEXT_LENGTH) { // message is too long to fit in one package
-		// Send current buffered package now and clear buffer
-		((LSPC*)debugHandle.com_)->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t *)debugHandle.messageBuffer_, debugHandle.currentBufferLocation_);
-		debugHandle.currentBufferLocation_ = 0;
+    uint16_t stringLength = strlen(msg);
+    if (stringLength > MAX_DEBUG_TEXT_LENGTH) { // message is too long to fit in one package
+        // Send current buffered package now and clear buffer
+        ((LSPC*)debugHandle.com_)
+          ->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t*)debugHandle.messageBuffer_,
+                          debugHandle.currentBufferLocation_);
+        debugHandle.currentBufferLocation_ = 0;
 
-		uint8_t * msgPtr = (uint8_t *)msg;
-		while (stringLength > 0) { // split the message up in seperate packages
-			uint16_t sendLength = stringLength;
-			if (sendLength > MAX_DEBUG_TEXT_LENGTH) sendLength = MAX_DEBUG_TEXT_LENGTH;
-			((LSPC*)debugHandle.com_)->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t *)msgPtr, sendLength);
-			msgPtr += sendLength;
-			stringLength -= sendLength;
-		}
-	} else { // package can fit in one package
-		if (stringLength > (MAX_DEBUG_TEXT_LENGTH-debugHandle.currentBufferLocation_)) {// stringLength = (MAX_DEBUG_TEXT_LENGTH-debugHandle.currentBufferLocation_); // "cut away" any parts above the maximum string length
-			// Send package now and clear buffer
-			((LSPC*)debugHandle.com_)->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t *)debugHandle.messageBuffer_, debugHandle.currentBufferLocation_);
-			debugHandle.currentBufferLocation_ = 0;
-		}
+        uint8_t* msgPtr = (uint8_t*)msg;
+        while (stringLength > 0) { // split the message up in seperate packages
+            uint16_t sendLength = stringLength;
+            if (sendLength > MAX_DEBUG_TEXT_LENGTH)
+                sendLength = MAX_DEBUG_TEXT_LENGTH;
+            ((LSPC*)debugHandle.com_)->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t*)msgPtr, sendLength);
+            msgPtr += sendLength;
+            stringLength -= sendLength;
+        }
+    } else { // package can fit in one package
+        if (stringLength >
+            (MAX_DEBUG_TEXT_LENGTH -
+             debugHandle
+               .currentBufferLocation_)) { // stringLength = (MAX_DEBUG_TEXT_LENGTH-debugHandle.currentBufferLocation_);
+                                           // // "cut away" any parts above the maximum string length
+            // Send package now and clear buffer
+            ((LSPC*)debugHandle.com_)
+              ->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t*)debugHandle.messageBuffer_,
+                              debugHandle.currentBufferLocation_);
+            debugHandle.currentBufferLocation_ = 0;
+        }
 
-		memcpy(&debugHandle.messageBuffer_[debugHandle.currentBufferLocation_], msg, stringLength);
-		debugHandle.currentBufferLocation_ += stringLength;
-	}
-	#ifdef USE_FREERTOS
-	xSemaphoreGive( debugHandle.mutex_ ); // give hardware resource back
-	#endif
+        memcpy(&debugHandle.messageBuffer_[debugHandle.currentBufferLocation_], msg, stringLength);
+        debugHandle.currentBufferLocation_ += stringLength;
+    }
+#ifdef USE_FREERTOS
+    xSemaphoreGive(debugHandle.mutex_); // give hardware resource back
+#endif
 #endif
 #endif
 }
 
 void Debug::Message(std::string msg)
 {
-	Message(msg.c_str());
-	Message("\n");
+    Message(msg.c_str());
+    Message("\n");
 }
 
-void Debug::Message(const char * functionName, const char * msg)
+void Debug::Message(const char* functionName, const char* msg)
 {
-	Message("[");
-	Message(functionName);
-	Message("] ");
-	Message(msg);
-	Message("\n");
+    Message("[");
+    Message(functionName);
+    Message("] ");
+    Message(msg);
+    Message("\n");
 }
 
-void Debug::Message(const char * functionName, std::string msg)
+void Debug::Message(const char* functionName, std::string msg)
 {
-	Message("[");
-	Message(functionName);
-	Message("] ");
-	Message(msg.c_str());
-	Message("\n");
+    Message("[");
+    Message(functionName);
+    Message("] ");
+    Message(msg.c_str());
+    Message("\n");
 }
 
-void Debug::Message(const char * type, const char * functionName, const char * msg)
+void Debug::Message(const char* type, const char* functionName, const char* msg)
 {
-	Message(type);
-	Message("[");
-	Message(functionName);
-	Message("] ");
-	Message(msg);
-	Message("\n");
+    Message(type);
+    Message("[");
+    Message(functionName);
+    Message("] ");
+    Message(msg);
+    Message("\n");
 }
 
-void Debug::Message(std::string type, const char * functionName, std::string msg)
+void Debug::Message(std::string type, const char* functionName, std::string msg)
 {
-	Message("[");
-	Message(functionName);
-	Message("] ");
-	Message(msg.c_str());
-	Message("\n");
+    Message("[");
+    Message(functionName);
+    Message("] ");
+    Message(msg.c_str());
+    Message("\n");
 }
 
-void Debug::print(const char * msg)
+void Debug::print(const char* msg)
 {
-	Message(msg);
+    Message(msg);
 }
 
-void Debug::printf( const char *msgFmt, ... )
+void Debug::printf(const char* msgFmt, ...)
 {
 #ifdef DEBUG_PRINTF_ENABLED
-	va_list args;
+    va_list args;
 
-	if (!debugHandle.com_) return;
+    if (!debugHandle.com_)
+        return;
 #ifndef DEBUG_PRINTF_WITHOUT_LSPC
-	if (!((LSPC*)debugHandle.com_)->Connected()) return;
+    if (!((LSPC*)debugHandle.com_)->Connected())
+        return;
 #endif
 
-	va_start( args,  msgFmt );
+    va_start(args, msgFmt);
 
-	char * strBuf = (char *) pvPortMalloc(MAX_DEBUG_TEXT_LENGTH);
-	if (!strBuf) return;
+    char* strBuf = (char*)pvPortMalloc(MAX_DEBUG_TEXT_LENGTH);
+    if (!strBuf)
+        return;
 
-	vsnprintf( strBuf, MAX_DEBUG_TEXT_LENGTH, msgFmt, args );
+    vsnprintf(strBuf, MAX_DEBUG_TEXT_LENGTH, msgFmt, args);
 
-	Message(strBuf);
+    Message(strBuf);
 
-	vPortFree(strBuf);
+    vPortFree(strBuf);
 
-	va_end( args );
+    va_end(args);
 #endif
 }
 
-void Debug::Error(const char * type, const char * functionName, const char * msg)
+void Debug::Error(const char* type, const char* functionName, const char* msg)
 {
-	// At errors do not continue current task/thread but print instead the error message repeatedly
-	__asm__("BKPT");
-	while (1)
-	{
-		Debug::Message(type, functionName, msg);
-		delay(500);
-	}
+    // At errors do not continue current task/thread but print instead the error message repeatedly
+    __asm__("BKPT");
+    while (1) {
+        Debug::Message(type, functionName, msg);
+        delay(500);
+    }
 }
 
-void Debug::SetDebugPin(void * pin)
+void Debug::SetDebugPin(void* pin)
 {
-	if (debugHandle.debugPulsePin_) return; // pin already set
-	debugHandle.debugPulsePin_ = pin;
+    if (debugHandle.debugPulsePin_)
+        return; // pin already set
+    debugHandle.debugPulsePin_ = pin;
 }
 
 void Debug::Pulse()
 {
-	if (!debugHandle.debugPulsePin_) return;
-	((IO*)debugHandle.debugPulsePin_)->High();
-	delay(50);
-	((IO*)debugHandle.debugPulsePin_)->Low();
+    if (!debugHandle.debugPulsePin_)
+        return;
+    ((IO*)debugHandle.debugPulsePin_)->High();
+    delay(50);
+    ((IO*)debugHandle.debugPulsePin_)->Low();
 }
 
 void Debug::Toggle()
 {
-	if (!debugHandle.debugPulsePin_) return;
-	((IO*)debugHandle.debugPulsePin_)->Toggle();
+    if (!debugHandle.debugPulsePin_)
+        return;
+    ((IO*)debugHandle.debugPulsePin_)->Toggle();
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
-	Debug::Error("ERROR: ", "Error_Handler", "Global ");
+    Debug::Error("ERROR: ", "Error_Handler", "Global ");
 }
 
-void Debug_print(const char * msg)
+void Debug_print(const char* msg)
 {
-	Debug::print(msg);
+    Debug::print(msg);
 }
 
 void Debug_Pulse()
 {
-	Debug::Pulse();
+    Debug::Pulse();
 }

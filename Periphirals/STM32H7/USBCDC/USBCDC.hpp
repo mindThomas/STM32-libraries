@@ -15,7 +15,7 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #pragma once
 
 #include "stm32h7xx_hal.h"
@@ -27,70 +27,69 @@
 #include <cmsis_os.h>
 #elif defined(USE_FREERTOS)
 #include "FreeRTOS.h"
-#include "semphr.h"
 #include "queue.h"
+#include "semphr.h"
 #endif
 
-#include "usbd_conf.h"
-#include "STM32_USB_Device_Library/Core/Inc/usbd_core.h"
-#include "usbd_desc.h"
 #include "STM32_USB_Device_Library/Class/CDC/Inc/usbd_cdc.h"
+#include "STM32_USB_Device_Library/Core/Inc/usbd_core.h"
 #include "usbd_cdc_if.h"
-
+#include "usbd_conf.h"
+#include "usbd_desc.h"
 
 class USBCDC
 {
-	private:
-		const int USBCDC_TX_PROCESSING_THREAD_STACK_SIZE = 256;
-		const int USBCDC_TX_QUEUE_LENGTH = 10;
-		const int USBCDC_RX_QUEUE_LENGTH = 10;
+private:
+    const int USBCDC_TX_PROCESSING_THREAD_STACK_SIZE = 256;
+    const int USBCDC_TX_QUEUE_LENGTH                 = 10;
+    const int USBCDC_RX_QUEUE_LENGTH                 = 10;
 
-	public:
+public:
 #ifdef USE_FREERTOS
-		USBCDC(uint32_t transmitterTaskPriority = USBCDC_TRANSMITTER_PRIORITY);
+    USBCDC(uint32_t transmitterTaskPriority = USBCDC_TRANSMITTER_PRIORITY);
 #else
-        USBCDC();
+    USBCDC();
 #endif
-		~USBCDC();
+    ~USBCDC();
 #ifdef USE_FREERTOS
-		bool GetPackage(USB_CDC_Package_t * packageBuffer);
+    bool GetPackage(USB_CDC_Package_t* packageBuffer);
 #endif
 
 #ifdef USE_FREERTOS
-		void Write(uint8_t byte);
-		uint32_t Write(uint8_t * buffer, uint32_t length);
+    void     Write(uint8_t byte);
+    uint32_t Write(uint8_t* buffer, uint32_t length);
 #endif
-		uint32_t WriteBlocking(uint8_t * buffer, uint32_t length);
+    uint32_t WriteBlocking(uint8_t* buffer, uint32_t length);
 
 #ifdef USE_FREERTOS // reading without FreeRTOS is not implemented yet
-		int16_t Read();
-		bool Available();
-		uint32_t WaitForNewData(uint32_t xTicksToWait = portMAX_DELAY);
+    int16_t  Read();
+    bool     Available();
+    uint32_t WaitForNewData(uint32_t xTicksToWait = portMAX_DELAY);
 #endif
-		bool Connected();
+    bool Connected();
 
-	private:
+private:
 #ifdef USE_FREERTOS
     TaskHandle_t _processingTaskHandle;
 #endif
-		USB_CDC_Package_t _tmpPackageForRead;
-		uint8_t _readIndex;
+    USB_CDC_Package_t _tmpPackageForRead;
+    uint8_t           _readIndex;
 #ifdef USE_FREERTOS
-		SemaphoreHandle_t _TXfinishedSemaphore;
-		SemaphoreHandle_t _RXdataAvailable;
-		QueueHandle_t _TXqueue;
-		QueueHandle_t _RXqueue;
-		SemaphoreHandle_t _resourceSemaphore;
+    SemaphoreHandle_t _TXfinishedSemaphore;
+    SemaphoreHandle_t _RXdataAvailable;
+    QueueHandle_t     _TXqueue;
+    QueueHandle_t     _RXqueue;
+    SemaphoreHandle_t _resourceSemaphore;
 #endif
-		bool _connected;
+    bool _connected;
 
 #ifdef USE_FREERTOS
-	private:
-		static void TransmitterThread(void * pvParameters);
+private:
+    static void TransmitterThread(void* pvParameters);
 #endif
 
-	public:
-		static USBCDC * usbHandle;
-		static USBD_HandleTypeDef hUsbDeviceFS;
-		static PCD_HandleTypeDef hpcd_USB_OTG_FS;
+public:
+    static USBCDC*            usbHandle;
+    static USBD_HandleTypeDef hUsbDeviceFS;
+    static PCD_HandleTypeDef  hpcd_USB_OTG_FS;
 };

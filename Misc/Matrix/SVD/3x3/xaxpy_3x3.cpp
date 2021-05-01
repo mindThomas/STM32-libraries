@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xaxpy_3x3.h"
 #include "rt_nonfinite.h"
 #include "svd_3x3.h"
-#include "xaxpy_3x3.h"
 
 // Function Definitions
 
@@ -26,19 +26,19 @@
 //
 void b_xaxpy_3x3(int n, float a, const float x[9], int ix0, float y[3], int iy0)
 {
-  int ix;
-  int iy;
-  int k;
-  if ((n < 1) || (a == 0.0F)) {
-  } else {
-    ix = ix0 - 1;
-    iy = iy0 - 1;
-    for (k = 0; k < n; k++) {
-      y[iy] += a * x[ix];
-      ix++;
-      iy++;
+    int ix;
+    int iy;
+    int k;
+    if ((n < 1) || (a == 0.0F)) {
+    } else {
+        ix = ix0 - 1;
+        iy = iy0 - 1;
+        for (k = 0; k < n; k++) {
+            y[iy] += a * x[ix];
+            ix++;
+            iy++;
+        }
     }
-  }
 }
 
 //
@@ -52,19 +52,19 @@ void b_xaxpy_3x3(int n, float a, const float x[9], int ix0, float y[3], int iy0)
 //
 void c_xaxpy_3x3(int n, float a, const float x[3], int ix0, float y[9], int iy0)
 {
-  int ix;
-  int iy;
-  int k;
-  if ((n < 1) || (a == 0.0F)) {
-  } else {
-    ix = ix0 - 1;
-    iy = iy0 - 1;
-    for (k = 0; k < n; k++) {
-      y[iy] += a * x[ix];
-      ix++;
-      iy++;
+    int ix;
+    int iy;
+    int k;
+    if ((n < 1) || (a == 0.0F)) {
+    } else {
+        ix = ix0 - 1;
+        iy = iy0 - 1;
+        for (k = 0; k < n; k++) {
+            y[iy] += a * x[ix];
+            ix++;
+            iy++;
+        }
     }
-  }
 }
 
 //
@@ -77,19 +77,19 @@ void c_xaxpy_3x3(int n, float a, const float x[3], int ix0, float y[9], int iy0)
 //
 void xaxpy_3x3(int n, float a, int ix0, float y[9], int iy0)
 {
-  int ix;
-  int iy;
-  int k;
-  if ((n < 1) || (a == 0.0F)) {
-  } else {
-    ix = ix0 - 1;
-    iy = iy0 - 1;
-    for (k = 0; k < n; k++) {
-      y[iy] += a * y[ix];
-      ix++;
-      iy++;
+    int ix;
+    int iy;
+    int k;
+    if ((n < 1) || (a == 0.0F)) {
+    } else {
+        ix = ix0 - 1;
+        iy = iy0 - 1;
+        for (k = 0; k < n; k++) {
+            y[iy] += a * y[ix];
+            ix++;
+            iy++;
+        }
     }
-  }
 }
 
 //

@@ -15,7 +15,7 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #ifndef MISC_RUNNINGAVERAGE_H
 #define MISC_RUNNINGAVERAGE_H
 
@@ -24,29 +24,26 @@
 
 class RunningAverage
 {
-		public:
-		RunningAverage()
-		{
-			_nSamples = 0;
-			_value = 0;
-		}
-		
-		~RunningAverage()
-		{
-		}
+public:
+    RunningAverage()
+    {
+        _nSamples = 0;
+        _value    = 0;
+    }
 
-		float Filter(float input)
-		{
-			float prev_sum = _value * _nSamples;
-			float new_sum = prev_sum + input;
-			_nSamples++;
-			_value = new_sum / _nSamples;
-		}
+    ~RunningAverage() {}
 
-		private:
-			uint32_t _nSamples; // number of currently averaged samples
-			float _value;
+    float Filter(float input)
+    {
+        float prev_sum = _value * _nSamples;
+        float new_sum  = prev_sum + input;
+        _nSamples++;
+        _value = new_sum / _nSamples;
+    }
+
+private:
+    uint32_t _nSamples; // number of currently averaged samples
+    float    _value;
 };
-	
-	
+
 #endif

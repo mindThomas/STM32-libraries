@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xdotc_5x5.h"
 #include "rt_nonfinite.h"
 #include "svd_5x5.h"
-#include "xdotc_5x5.h"
 
 // Function Definitions
 
@@ -25,22 +25,22 @@
 //
 float xdotc_5x5(int n, const float x[25], int ix0, const float y[25], int iy0)
 {
-  float d;
-  int ix;
-  int iy;
-  int k;
-  d = 0.0F;
-  if (!(n < 1)) {
-    ix = ix0;
-    iy = iy0;
-    for (k = 1; k <= n; k++) {
-      d += x[ix - 1] * y[iy - 1];
-      ix++;
-      iy++;
+    float d;
+    int   ix;
+    int   iy;
+    int   k;
+    d = 0.0F;
+    if (!(n < 1)) {
+        ix = ix0;
+        iy = iy0;
+        for (k = 1; k <= n; k++) {
+            d += x[ix - 1] * y[iy - 1];
+            ix++;
+            iy++;
+        }
     }
-  }
 
-  return d;
+    return d;
 }
 
 //

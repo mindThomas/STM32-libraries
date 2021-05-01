@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xscal_5x5.h"
 #include "rt_nonfinite.h"
 #include "svd_5x5.h"
-#include "xscal_5x5.h"
 
 // Function Definitions
 
@@ -23,10 +23,10 @@
 //
 void xscal_5x5(float a, float x[25], int ix0)
 {
-  int k;
-  for (k = ix0; k <= ix0 + 4; k++) {
-    x[k - 1] *= a;
-  }
+    int k;
+    for (k = ix0; k <= ix0 + 4; k++) {
+        x[k - 1] *= a;
+    }
 }
 
 //

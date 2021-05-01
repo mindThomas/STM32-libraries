@@ -138,7 +138,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
  */
 void HAL_IncTick(void)
 {
-    uwTickHighRes += HAL_SYSTICK_FREQUENCY; // timer update rate configured 1 Hz but with timer count frequency running at 10 kHz
+    uwTickHighRes +=
+      HAL_SYSTICK_FREQUENCY; // timer update rate configured 1 Hz but with timer count frequency running at 10 kHz
 }
 
 uint32_t HAL_GetHighResTick(void)

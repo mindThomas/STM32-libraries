@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xswap_3x3.h"
 #include "rt_nonfinite.h"
 #include "svd_3x3.h"
-#include "xswap_3x3.h"
 
 // Function Definitions
 
@@ -23,19 +23,19 @@
 //
 void xswap_3x3(float x[9], int ix0, int iy0)
 {
-  int ix;
-  int iy;
-  int k;
-  float temp;
-  ix = ix0 - 1;
-  iy = iy0 - 1;
-  for (k = 0; k < 3; k++) {
-    temp = x[ix];
-    x[ix] = x[iy];
-    x[iy] = temp;
-    ix++;
-    iy++;
-  }
+    int   ix;
+    int   iy;
+    int   k;
+    float temp;
+    ix = ix0 - 1;
+    iy = iy0 - 1;
+    for (k = 0; k < 3; k++) {
+        temp  = x[ix];
+        x[ix] = x[iy];
+        x[iy] = temp;
+        ix++;
+        iy++;
+    }
 }
 
 //

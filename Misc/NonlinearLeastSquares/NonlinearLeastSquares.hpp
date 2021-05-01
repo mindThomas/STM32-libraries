@@ -15,24 +15,21 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #ifndef MISC_NONLINEAR_LEAST_SQUARES_H
 #define MISC_NONLINEAR_LEAST_SQUARES_H
 
 #include "Matrix.hpp"
 
-
 class NonlinearLeastSquares
 {
 
 public:
-	static void fitExponentialDecay(const Matrix& x, const Matrix& y, float coeffs_out[3]);
+    static void fitExponentialDecay(const Matrix& x, const Matrix& y, float coeffs_out[3]);
 
-private:	
-	static float model(const float x, const float * coeffs);
-	static void JacobianRow(const float x, const float * coeffs, float * Jr_row);
-
+private:
+    static float model(const float x, const float* coeffs);
+    static void  JacobianRow(const float x, const float* coeffs, float* Jr_row);
 };
-	
-	
+
 #endif

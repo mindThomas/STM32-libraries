@@ -9,11 +9,11 @@
 //
 
 // Include Files
-#include <math.h>
+#include "xrotg_3x3.h"
 #include "mw_cmsis.h"
 #include "rt_nonfinite.h"
 #include "svd_3x3.h"
-#include "xrotg_3x3.h"
+#include <math.h>
 
 // Function Definitions
 
@@ -24,48 +24,48 @@
 //                float *s
 // Return Type  : void
 //
-void xrotg_3x3(float *a, float *b, float *c, float *s)
+void xrotg_3x3(float* a, float* b, float* c, float* s)
 {
-  float roe;
-  float absa;
-  float absb;
-  float scale;
-  float ads;
-  float bds;
-  roe = *b;
-  absa = (float)fabs((double)*a);
-  absb = (float)fabs((double)*b);
-  if (absa > absb) {
-    roe = *a;
-  }
-
-  scale = absa + absb;
-  if (scale == 0.0F) {
-    *s = 0.0F;
-    *c = 1.0F;
-    ads = 0.0F;
-    *b = 0.0F;
-  } else {
-    ads = absa / scale;
-    bds = absb / scale;
-    mw_arm_sqrt_f32(ads * ads + bds * bds, &ads);
-    ads *= scale;
-    if (roe < 0.0F) {
-      ads = -ads;
-    }
-
-    *c = *a / ads;
-    *s = *b / ads;
+    float roe;
+    float absa;
+    float absb;
+    float scale;
+    float ads;
+    float bds;
+    roe  = *b;
+    absa = (float)fabs((double)*a);
+    absb = (float)fabs((double)*b);
     if (absa > absb) {
-      *b = *s;
-    } else if (*c != 0.0F) {
-      *b = 1.0F / *c;
-    } else {
-      *b = 1.0F;
+        roe = *a;
     }
-  }
 
-  *a = ads;
+    scale = absa + absb;
+    if (scale == 0.0F) {
+        *s  = 0.0F;
+        *c  = 1.0F;
+        ads = 0.0F;
+        *b  = 0.0F;
+    } else {
+        ads = absa / scale;
+        bds = absb / scale;
+        mw_arm_sqrt_f32(ads * ads + bds * bds, &ads);
+        ads *= scale;
+        if (roe < 0.0F) {
+            ads = -ads;
+        }
+
+        *c = *a / ads;
+        *s = *b / ads;
+        if (absa > absb) {
+            *b = *s;
+        } else if (*c != 0.0F) {
+            *b = 1.0F / *c;
+        } else {
+            *b = 1.0F;
+        }
+    }
+
+    *a = ads;
 }
 
 //

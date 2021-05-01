@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xrot_2x2.h"
 #include "rt_nonfinite.h"
 #include "svd_2x2.h"
-#include "xrot_2x2.h"
 
 // Function Definitions
 
@@ -25,19 +25,19 @@
 //
 void xrot_2x2(float x[4], int ix0, int iy0, float c, float s)
 {
-  int ix;
-  int iy;
-  int k;
-  float temp;
-  ix = ix0 - 1;
-  iy = iy0 - 1;
-  for (k = 0; k < 2; k++) {
-    temp = c * x[ix] + s * x[iy];
-    x[iy] = c * x[iy] - s * x[ix];
-    x[ix] = temp;
-    iy++;
-    ix++;
-  }
+    int   ix;
+    int   iy;
+    int   k;
+    float temp;
+    ix = ix0 - 1;
+    iy = iy0 - 1;
+    for (k = 0; k < 2; k++) {
+        temp  = c * x[ix] + s * x[iy];
+        x[iy] = c * x[iy] - s * x[ix];
+        x[ix] = temp;
+        iy++;
+        ix++;
+    }
 }
 
 //

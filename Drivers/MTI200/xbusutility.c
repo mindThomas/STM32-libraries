@@ -43,22 +43,22 @@
  */
 uint8_t const* XbusUtility_readU8(uint8_t* out, uint8_t const* in)
 {
-	*out = *in;
-	return ++in;
+    *out = *in;
+    return ++in;
 }
 
 /*! \brief Read a uint16_t value from an Xbus message. */
 uint8_t const* XbusUtility_readU16(uint16_t* out, uint8_t const* in)
 {
-	*out = (in[0] << 8) | in[1];
-	return in + sizeof(uint16_t);
+    *out = (in[0] << 8) | in[1];
+    return in + sizeof(uint16_t);
 }
 
 /*! \brief Read a uint32_t value from an Xbus message. */
 uint8_t const* XbusUtility_readU32(uint32_t* out, uint8_t const* in)
 {
-	*out = (in[0] << 24) | (in[1] << 16) | (in[2] << 8) | in[3];
-	return in + sizeof(uint32_t);
+    *out = (in[0] << 24) | (in[1] << 16) | (in[2] << 8) | in[3];
+    return in + sizeof(uint32_t);
 }
 /*! \} */
 
@@ -71,25 +71,25 @@ uint8_t const* XbusUtility_readU32(uint32_t* out, uint8_t const* in)
 /*! \brief Write a uint8_t value to an Xbus message. */
 uint8_t* XbusUtility_writeU8(uint8_t* out, uint8_t in)
 {
-	*out++ = in;
-	return out;
+    *out++ = in;
+    return out;
 }
 
 /*! \brief Write a uint16_t value to an Xbus message. */
 uint8_t* XbusUtility_writeU16(uint8_t* out, uint16_t in)
 {
-	*out++ = (in >> 8) & 0xFF;
-	*out++ = in & 0xFF;
-	return out;
+    *out++ = (in >> 8) & 0xFF;
+    *out++ = in & 0xFF;
+    return out;
 }
 
 /*! \brief Write a uint32_t value to an Xbus message. */
 uint8_t* XbusUtility_writeU32(uint8_t* out, uint32_t in)
 {
-	*out++ = (in >> 24) & 0xFF;
-	*out++ = (in >> 16) & 0xFF;
-	*out++ = (in >> 8) & 0xFF;
-	*out++ = in & 0xFF;
-	return out;
+    *out++ = (in >> 24) & 0xFF;
+    *out++ = (in >> 16) & 0xFF;
+    *out++ = (in >> 8) & 0xFF;
+    *out++ = in & 0xFF;
+    return out;
 }
 /*! \}  */

@@ -9,8 +9,8 @@
 //
 
 // Include Files
-#include "rt_nonfinite.h"
 #include "MATLABCoderInit.h"
+#include "rt_nonfinite.h"
 
 // Function Definitions
 
@@ -20,7 +20,7 @@
 //
 void MATLABCoder_initialize()
 {
-  rt_InitInfAndNaN(8U);
+    rt_InitInfAndNaN(8U);
 }
 
 //

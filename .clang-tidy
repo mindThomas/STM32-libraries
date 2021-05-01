@@ -4,7 +4,7 @@ Checks:           '-*,boost-*,bugprone-*,clang-analyzer-*,cppcoreguidelines-*,mi
 WarningsAsErrors: '*'
 CheckOptions:
   - key: readability-function-size.LineThreshold
-    value: 100
+    value: 250
   - key: readability-function-size.ParameterThreshold
     value: 7
   - key: readability-function-size.BranchThreshold

@@ -14,12 +14,12 @@
  *      (Inf, NaN and -Inf).
  */
 #include "rt_nonfinite.h"
-#include "rtGetNaN.h"
 #include "rtGetInf.h"
+#include "rtGetNaN.h"
 
-real_T rtInf;
-real_T rtMinusInf;
-real_T rtNaN;
+real_T   rtInf;
+real_T   rtMinusInf;
+real_T   rtNaN;
 real32_T rtInfF;
 real32_T rtMinusInfF;
 real32_T rtNaNF;
@@ -31,13 +31,13 @@ real32_T rtNaNF;
  */
 void rt_InitInfAndNaN(size_t realSize)
 {
-  (void)realSize;
-  rtNaN = rtGetNaN();
-  rtNaNF = rtGetNaNF();
-  rtInf = rtGetInf();
-  rtInfF = rtGetInfF();
-  rtMinusInf = rtGetMinusInf();
-  rtMinusInfF = rtGetMinusInfF();
+    (void)realSize;
+    rtNaN       = rtGetNaN();
+    rtNaNF      = rtGetNaNF();
+    rtInf       = rtGetInf();
+    rtInfF      = rtGetInfF();
+    rtMinusInf  = rtGetMinusInf();
+    rtMinusInfF = rtGetMinusInfF();
 }
 
 /* Function: rtIsInf ==================================================
@@ -46,7 +46,7 @@ void rt_InitInfAndNaN(size_t realSize)
  */
 boolean_T rtIsInf(real_T value)
 {
-  return ((value==rtInf || value==rtMinusInf) ? 1U : 0U);
+    return ((value == rtInf || value == rtMinusInf) ? 1U : 0U);
 }
 
 /* Function: rtIsInfF =================================================
@@ -55,7 +55,7 @@ boolean_T rtIsInf(real_T value)
  */
 boolean_T rtIsInfF(real32_T value)
 {
-  return(((value)==rtInfF || (value)==rtMinusInfF) ? 1U : 0U);
+    return (((value) == rtInfF || (value) == rtMinusInfF) ? 1U : 0U);
 }
 
 /* Function: rtIsNaN ==================================================
@@ -64,7 +64,7 @@ boolean_T rtIsInfF(real32_T value)
  */
 boolean_T rtIsNaN(real_T value)
 {
-  return (value!=value)? 1U:0U;
+    return (value != value) ? 1U : 0U;
 }
 
 /* Function: rtIsNaNF =================================================
@@ -73,7 +73,7 @@ boolean_T rtIsNaN(real_T value)
  */
 boolean_T rtIsNaNF(real32_T value)
 {
-  return (value!=value)? 1U:0U;
+    return (value != value) ? 1U : 0U;
 }
 
 /*

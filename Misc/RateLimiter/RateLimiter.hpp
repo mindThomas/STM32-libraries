@@ -15,73 +15,67 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #ifndef MISC_RATELIMITER_H
 #define MISC_RATELIMITER_H
 
-#include <assert.h>  // assert
-#include <cmath>
 #include "Debug.h"
+#include <assert.h> // assert
+#include <cmath>
 
 class RateLimiter
 {
-		public:
-		RateLimiter(float Ts, float rateLimit)
-            : _Ts(Ts)
-			, _accelerationDeltaLimit(Ts * rateLimit)
-			, _deccelerationDeltaLimit(Ts * rateLimit)
-		{			
-		}
+public:
+    RateLimiter(float Ts, float rateLimit)
+        : _Ts(Ts)
+        , _accelerationDeltaLimit(Ts * rateLimit)
+        , _deccelerationDeltaLimit(Ts * rateLimit)
+    {}
 
-		RateLimiter(float Ts, float accelerationLimit, float deccelerationLimit)
-            : _Ts(Ts)
-            , _accelerationDeltaLimit(Ts * accelerationLimit)
-			, _deccelerationDeltaLimit(Ts * deccelerationLimit)
-		{
-		}
+    RateLimiter(float Ts, float accelerationLimit, float deccelerationLimit)
+        : _Ts(Ts)
+        , _accelerationDeltaLimit(Ts * accelerationLimit)
+        , _deccelerationDeltaLimit(Ts * deccelerationLimit)
+    {}
 
-        void reset(float prevOutput)
-        {
-            _prevOutput = prevOutput;
+    void reset(float prevOutput) { _prevOutput = prevOutput; }
+
+    void set_rate_limit(float rateLimit)
+    {
+        _accelerationDeltaLimit  = _Ts * rateLimit;
+        _deccelerationDeltaLimit = _Ts * rateLimit;
+    }
+
+    void set_rate_limits(float accelerationLimit, float deccelerationLimit)
+    {
+        _accelerationDeltaLimit  = _Ts * accelerationLimit;
+        _deccelerationDeltaLimit = _Ts * deccelerationLimit;
+    }
+
+    float operator()(float input)
+    {
+        float delta = input - _prevOutput;
+        if (fabsf(input) > fabsf(_prevOutput)) {
+            _prevOutput += clamp(delta, -_accelerationDeltaLimit, _accelerationDeltaLimit);
+        } else {
+            _prevOutput += clamp(delta, -_deccelerationDeltaLimit, _deccelerationDeltaLimit);
         }
+        return _prevOutput;
+    }
 
-        void set_rate_limit(float rateLimit)
-        {
-        	_accelerationDeltaLimit = _Ts * rateLimit;
-        	_deccelerationDeltaLimit = _Ts * rateLimit;
-        }
+private:
+    template<class T>
+    constexpr const T& clamp(const T& v, const T& lo, const T& hi)
+    {
+        assert(!(hi < lo));
+        return (v < lo) ? lo : (hi < v) ? hi : v;
+    }
 
-        void set_rate_limits(float accelerationLimit, float deccelerationLimit)
-        {
-        	_accelerationDeltaLimit = _Ts * accelerationLimit;
-        	_deccelerationDeltaLimit = _Ts * deccelerationLimit;
-        }
-		
-		float operator()(float input)
-		{
-			float delta = input - _prevOutput;
-			if (fabsf(input) > fabsf(_prevOutput)) {
-				_prevOutput += clamp(delta, -_accelerationDeltaLimit, _accelerationDeltaLimit);
-			} else {
-				_prevOutput += clamp(delta, -_deccelerationDeltaLimit, _deccelerationDeltaLimit);
-			}
-			return _prevOutput;
-		}
-
-        private:
-            template<class T>
-            constexpr const T& clamp( const T& v, const T& lo, const T& hi )
-            {
-                assert( !(hi < lo) );
-                return (v < lo) ? lo : (hi < v) ? hi : v;
-            }
-
-		private:
-            float _Ts;
-			float _accelerationDeltaLimit;
-			float _deccelerationDeltaLimit;
-            float _prevOutput;
+private:
+    float _Ts;
+    float _accelerationDeltaLimit;
+    float _deccelerationDeltaLimit;
+    float _prevOutput;
 };
-	
-	
+
 #endif

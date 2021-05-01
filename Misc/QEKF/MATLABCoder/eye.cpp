@@ -9,10 +9,10 @@
 //
 
 // Include Files
-#include <string.h>
-#include "rt_nonfinite.h"
-#include "QEKF_coder.h"
 #include "eye.h"
+#include "QEKF_coder.h"
+#include "rt_nonfinite.h"
+#include <string.h>
 
 // Function Definitions
 
@@ -22,11 +22,11 @@
 //
 void b_eye(double I[16])
 {
-  int k;
-  memset(&I[0], 0, sizeof(double) << 4);
-  for (k = 0; k < 4; k++) {
-    I[k + (k << 2)] = 1.0;
-  }
+    int k;
+    memset(&I[0], 0, sizeof(double) << 4);
+    for (k = 0; k < 4; k++) {
+        I[k + (k << 2)] = 1.0;
+    }
 }
 
 //
@@ -35,11 +35,11 @@ void b_eye(double I[16])
 //
 void c_eye(double I[100])
 {
-  int k;
-  memset(&I[0], 0, 100U * sizeof(double));
-  for (k = 0; k < 10; k++) {
-    I[k + 10 * k] = 1.0;
-  }
+    int k;
+    memset(&I[0], 0, 100U * sizeof(double));
+    for (k = 0; k < 10; k++) {
+        I[k + 10 * k] = 1.0;
+    }
 }
 
 //
@@ -48,11 +48,11 @@ void c_eye(double I[100])
 //
 void eye(double I[9])
 {
-  int k;
-  memset(&I[0], 0, 9U * sizeof(double));
-  for (k = 0; k < 3; k++) {
-    I[k + 3 * k] = 1.0;
-  }
+    int k;
+    memset(&I[0], 0, 9U * sizeof(double));
+    for (k = 0; k < 3; k++) {
+        I[k + 3 * k] = 1.0;
+    }
 }
 
 //

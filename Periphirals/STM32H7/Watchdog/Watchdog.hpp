@@ -15,20 +15,18 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #ifndef MODULES_WATCHDOG_H
 #define MODULES_WATCHDOG_H
 
 class Watchdog
 {
 
-	public:
-		Watchdog();	
-		~Watchdog();
+public:
+    Watchdog();
+    ~Watchdog();
 
-	private:
-	
+private:
 };
-	
-	
+
 #endif

@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xscal_4x4.h"
 #include "rt_nonfinite.h"
 #include "svd_4x4.h"
-#include "xscal_4x4.h"
 
 // Function Definitions
 
@@ -23,10 +23,10 @@
 //
 void xscal_4x4(float a, float x[16], int ix0)
 {
-  int k;
-  for (k = ix0; k <= ix0 + 3; k++) {
-    x[k - 1] *= a;
-  }
+    int k;
+    for (k = ix0; k <= ix0 + 3; k++) {
+        x[k - 1] *= a;
+    }
 }
 
 //

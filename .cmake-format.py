@@ -6,6 +6,8 @@ tab_size = 4
 
 # If arglists are longer than this, break them always
 max_subargs_per_line = 3
+max_subgroups_hwrap = 3
+max_pargs_hwrap = 3
 
 # If true, separate flow control names from their parentheses with a space
 separate_ctrl_name_with_space = False
@@ -16,6 +18,9 @@ separate_fn_name_with_space = False
 # If a statement is wrapped to more than one line, than dangle the closing
 # parenthesis on it's own line
 dangle_parens = False
+
+# Wrapping
+always_wrap = ['find_package', 'add_executable', 'target_link_libraries']
 
 # What character to use for bulleted lists
 bullet_char = '-'

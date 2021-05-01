@@ -15,65 +15,75 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #include "ApplicationTemplate.h"
 #include "cmsis_os.h"
 
-ApplicationTemplate::ApplicationTemplate() : _TaskHandle(0), _isRunning(false), _shouldStop(false)
+ApplicationTemplate::ApplicationTemplate()
+    : _TaskHandle(0)
+    , _isRunning(false)
+    , _shouldStop(false)
 {
-	_params = new Parameters;
+    _params = new Parameters;
 
-	Start();
+    Start();
 }
 
 ApplicationTemplate::~ApplicationTemplate()
 {
-	_shouldStop = true;
-	while (_isRunning) osDelay(10);
+    _shouldStop = true;
+    while (_isRunning)
+        osDelay(10);
 }
 
 int ApplicationTemplate::Start()
 {
-	if (_isRunning) return 0; // task already running
-	_shouldStop = false;
-	return xTaskCreate( ApplicationTemplate::Thread, (char *)"Application Template", THREAD_STACK_SIZE, (void*) this, THREAD_PRIORITY, &_TaskHandle);
+    if (_isRunning)
+        return 0; // task already running
+    _shouldStop = false;
+    return xTaskCreate(ApplicationTemplate::Thread, (char*)"Application Template", THREAD_STACK_SIZE, (void*)this,
+                       THREAD_PRIORITY, &_TaskHandle);
 }
 
 int ApplicationTemplate::Stop(uint32_t timeout)
 {
-	if (!_isRunning) return 0; // task not running
+    if (!_isRunning)
+        return 0; // task not running
 
-	_shouldStop = true;
+    _shouldStop = true;
 
-	uint32_t timeout_millis = timeout;
-	while (_isRunning && timeout_millis > 0) {
-		osDelay(1);
-		timeout_millis--;
-	}
-	if (_isRunning) return -1; // timeout trying to stop task
+    uint32_t timeout_millis = timeout;
+    while (_isRunning && timeout_millis > 0) {
+        osDelay(1);
+        timeout_millis--;
+    }
+    if (_isRunning)
+        return -1; // timeout trying to stop task
 
-	return 1;
+    return 1;
 }
 
 int ApplicationTemplate::Restart(uint32_t timeout)
 {
-	if (!_isRunning) return 0; // task not running
-	int errCode = Stop(timeout);
-	if (errCode != 1) return errCode;
-	return Start();
+    if (!_isRunning)
+        return 0; // task not running
+    int errCode = Stop(timeout);
+    if (errCode != 1)
+        return errCode;
+    return Start();
 }
 
-void ApplicationTemplate::Thread(void * pvParameters)
+void ApplicationTemplate::Thread(void* pvParameters)
 {
-	ApplicationTemplate * task = (ApplicationTemplate *)pvParameters;
-	task->_isRunning = true;
+    ApplicationTemplate* task = (ApplicationTemplate*)pvParameters;
+    task->_isRunning          = true;
 
-	while (!task->_shouldStop) {
-		/* THIS IS THE MAIN LOOP */
-		osDelay(1000);
-	}
+    while (!task->_shouldStop) {
+        /* THIS IS THE MAIN LOOP */
+        osDelay(1000);
+    }
 
-	task->_isRunning = false;
-	task->_TaskHandle = 0;
-	vTaskDelete(NULL); // delete/stop this current task
+    task->_isRunning  = false;
+    task->_TaskHandle = 0;
+    vTaskDelete(NULL); // delete/stop this current task
 }

@@ -15,7 +15,7 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #pragma once
 
 #include "stm32h7xx_hal.h"
@@ -28,72 +28,72 @@
 #include "semphr.h"
 #endif
 
-
 class Timer
 {
-	private:
-		const uint16_t TIMER_DEFAULT_MAXVALUE = 0xFFFF;
+private:
+    const uint16_t TIMER_DEFAULT_MAXVALUE = 0xFFFF;
 
-	public:
-		typedef enum timer_t {
-			TIMER_UNDEFINED = 0,
-			TIMER6,
-			TIMER7,
-			TIMER12,
-			TIMER13
-		} timer_t;
+public:
+    typedef enum timer_t
+    {
+        TIMER_UNDEFINED = 0,
+        TIMER6,
+        TIMER7,
+        TIMER12,
+        TIMER13
+    } timer_t;
 
-	public:
-		Timer(timer_t timer, uint32_t frequency); // frequency defines the timer count frequency
-		~Timer();
+public:
+    Timer(timer_t timer, uint32_t frequency); // frequency defines the timer count frequency
+    ~Timer();
 
-		void ConfigureTimerPeripheral();
+    void ConfigureTimerPeripheral();
 #ifdef USE_FREERTOS
-		void RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)());
+    void RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)());
 #endif
-		void RegisterInterrupt(uint32_t frequency, void (*TimerCallback)());
+    void RegisterInterrupt(uint32_t frequency, void (*TimerCallback)());
 #ifdef USE_FREERTOS
-		void RegisterInterrupt(uint32_t frequency, SemaphoreHandle_t semaphore);
+    void RegisterInterrupt(uint32_t frequency, SemaphoreHandle_t semaphore);
 #endif
-		void SetMaxValue(uint16_t maxValue);
+    void SetMaxValue(uint16_t maxValue);
 
-		uint32_t Get();
-		float GetTime();
-		void Reset();
-		void Wait(uint32_t MicrosToWait);
-		float GetDeltaTime(uint32_t prevTimerValue);
+    uint32_t Get();
+    float    GetTime();
+    void     Reset();
+    void     Wait(uint32_t MicrosToWait);
+    float    GetDeltaTime(uint32_t prevTimerValue);
 
-	public:
-		typedef struct hardware_resource_t {
-			timer_t timer;
-			uint32_t frequency;
-			uint16_t maxValue;
-			uint32_t counterOffset;
-			TIM_HandleTypeDef handle;
+public:
+    typedef struct hardware_resource_t
+    {
+        timer_t           timer;
+        uint32_t          frequency;
+        uint16_t          maxValue;
+        uint32_t          counterOffset;
+        TIM_HandleTypeDef handle;
 #ifdef USE_FREERTOS
-			TaskHandle_t callbackTaskHandle;
+        TaskHandle_t callbackTaskHandle;
 #endif
-			void (*TimerCallback)();
+        void (*TimerCallback)();
 #ifdef USE_FREERTOS
-			SemaphoreHandle_t callbackSemaphore;
+        SemaphoreHandle_t callbackSemaphore;
 #endif
-		} hardware_resource_t;
+    } hardware_resource_t;
 
-		static hardware_resource_t * resTIMER6;
-		static hardware_resource_t * resTIMER7;
-		static hardware_resource_t * resTIMER12;
-		static hardware_resource_t * resTIMER13;
+    static hardware_resource_t* resTIMER6;
+    static hardware_resource_t* resTIMER7;
+    static hardware_resource_t* resTIMER12;
+    static hardware_resource_t* resTIMER13;
 
-		void (*_TimerCallbackSoft)();
+    void (*_TimerCallbackSoft)();
 
-	private:
-		hardware_resource_t * _hRes;
+private:
+    hardware_resource_t* _hRes;
 #ifdef USE_FREERTOS
-		SemaphoreHandle_t _waitSemaphore;
+    SemaphoreHandle_t _waitSemaphore;
 #endif
 
-	public:
-		static void InterruptHandler(Timer::hardware_resource_t * timer);
-		static void CallbackThread(void * pvParameters);
-
+public:
+    static void InterruptHandler(Timer::hardware_resource_t* timer);
+    static void CallbackThread(void* pvParameters);
 };

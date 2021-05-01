@@ -9,11 +9,11 @@
 //
 
 // Include Files
-#include <math.h>
+#include "xnrm2_5x5.h"
 #include "mw_cmsis.h"
 #include "rt_nonfinite.h"
 #include "svd_5x5.h"
-#include "xnrm2_5x5.h"
+#include <math.h>
 
 // Function Definitions
 
@@ -25,38 +25,38 @@
 //
 float b_xnrm2_5x5(int n, const float x[5], int ix0)
 {
-  float y;
-  float scale;
-  int kend;
-  int k;
-  float f1;
-  float absxk;
-  float t;
-  y = 0.0F;
-  if (!(n < 1)) {
-    if (n == 1) {
-      y = (float)fabs((double)x[ix0 - 1]);
-    } else {
-      scale = 1.29246971E-26F;
-      kend = (ix0 + n) - 1;
-      for (k = ix0; k <= kend; k++) {
-        absxk = (float)fabs((double)x[k - 1]);
-        if (absxk > scale) {
-          t = scale / absxk;
-          y = 1.0F + y * t * t;
-          scale = absxk;
+    float y;
+    float scale;
+    int   kend;
+    int   k;
+    float f1;
+    float absxk;
+    float t;
+    y = 0.0F;
+    if (!(n < 1)) {
+        if (n == 1) {
+            y = (float)fabs((double)x[ix0 - 1]);
         } else {
-          t = absxk / scale;
-          y += t * t;
+            scale = 1.29246971E-26F;
+            kend  = (ix0 + n) - 1;
+            for (k = ix0; k <= kend; k++) {
+                absxk = (float)fabs((double)x[k - 1]);
+                if (absxk > scale) {
+                    t     = scale / absxk;
+                    y     = 1.0F + y * t * t;
+                    scale = absxk;
+                } else {
+                    t = absxk / scale;
+                    y += t * t;
+                }
+            }
+
+            mw_arm_sqrt_f32(y, &f1);
+            y = scale * f1;
         }
-      }
-
-      mw_arm_sqrt_f32(y, &f1);
-      y = scale * f1;
     }
-  }
 
-  return y;
+    return y;
 }
 
 //
@@ -67,38 +67,38 @@ float b_xnrm2_5x5(int n, const float x[5], int ix0)
 //
 float xnrm2_5x5(int n, const float x[25], int ix0)
 {
-  float y;
-  float scale;
-  int kend;
-  int k;
-  float f0;
-  float absxk;
-  float t;
-  y = 0.0F;
-  if (!(n < 1)) {
-    if (n == 1) {
-      y = (float)fabs((double)x[ix0 - 1]);
-    } else {
-      scale = 1.29246971E-26F;
-      kend = (ix0 + n) - 1;
-      for (k = ix0; k <= kend; k++) {
-        absxk = (float)fabs((double)x[k - 1]);
-        if (absxk > scale) {
-          t = scale / absxk;
-          y = 1.0F + y * t * t;
-          scale = absxk;
+    float y;
+    float scale;
+    int   kend;
+    int   k;
+    float f0;
+    float absxk;
+    float t;
+    y = 0.0F;
+    if (!(n < 1)) {
+        if (n == 1) {
+            y = (float)fabs((double)x[ix0 - 1]);
         } else {
-          t = absxk / scale;
-          y += t * t;
+            scale = 1.29246971E-26F;
+            kend  = (ix0 + n) - 1;
+            for (k = ix0; k <= kend; k++) {
+                absxk = (float)fabs((double)x[k - 1]);
+                if (absxk > scale) {
+                    t     = scale / absxk;
+                    y     = 1.0F + y * t * t;
+                    scale = absxk;
+                } else {
+                    t = absxk / scale;
+                    y += t * t;
+                }
+            }
+
+            mw_arm_sqrt_f32(y, &f0);
+            y = scale * f0;
         }
-      }
-
-      mw_arm_sqrt_f32(y, &f0);
-      y = scale * f0;
     }
-  }
 
-  return y;
+    return y;
 }
 
 //

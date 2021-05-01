@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xrot_5x5.h"
 #include "rt_nonfinite.h"
 #include "svd_5x5.h"
-#include "xrot_5x5.h"
 
 // Function Definitions
 
@@ -25,19 +25,19 @@
 //
 void xrot_5x5(float x[25], int ix0, int iy0, float c, float s)
 {
-  int ix;
-  int iy;
-  int k;
-  float temp;
-  ix = ix0 - 1;
-  iy = iy0 - 1;
-  for (k = 0; k < 5; k++) {
-    temp = c * x[ix] + s * x[iy];
-    x[iy] = c * x[iy] - s * x[ix];
-    x[ix] = temp;
-    iy++;
-    ix++;
-  }
+    int   ix;
+    int   iy;
+    int   k;
+    float temp;
+    ix = ix0 - 1;
+    iy = iy0 - 1;
+    for (k = 0; k < 5; k++) {
+        temp  = c * x[ix] + s * x[iy];
+        x[iy] = c * x[iy] - s * x[ix];
+        x[ix] = temp;
+        iy++;
+        ix++;
+    }
 }
 
 //

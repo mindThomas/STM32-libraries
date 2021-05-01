@@ -9,11 +9,11 @@
 //
 
 // Include Files
-#include <math.h>
+#include "norm.h"
+#include "QEKF_coder.h"
 #include "mw_cmsis.h"
 #include "rt_nonfinite.h"
-#include "QEKF_coder.h"
-#include "norm.h"
+#include <math.h>
 
 // Function Definitions
 
@@ -23,28 +23,28 @@
 //
 float b_norm(const float x[4])
 {
-  float y;
-  float scale;
-  int k;
-  float f1;
-  float absxk;
-  float t;
-  y = 0.0F;
-  scale = 1.29246971E-26F;
-  for (k = 0; k < 4; k++) {
-    absxk = (float)fabs((double)x[k]);
-    if (absxk > scale) {
-      t = scale / absxk;
-      y = 1.0F + y * t * t;
-      scale = absxk;
-    } else {
-      t = absxk / scale;
-      y += t * t;
+    float y;
+    float scale;
+    int   k;
+    float f1;
+    float absxk;
+    float t;
+    y     = 0.0F;
+    scale = 1.29246971E-26F;
+    for (k = 0; k < 4; k++) {
+        absxk = (float)fabs((double)x[k]);
+        if (absxk > scale) {
+            t     = scale / absxk;
+            y     = 1.0F + y * t * t;
+            scale = absxk;
+        } else {
+            t = absxk / scale;
+            y += t * t;
+        }
     }
-  }
 
-  mw_arm_sqrt_f32(y, &f1);
-  return scale * f1;
+    mw_arm_sqrt_f32(y, &f1);
+    return scale * f1;
 }
 
 //
@@ -53,28 +53,28 @@ float b_norm(const float x[4])
 //
 float norm(const float x[3])
 {
-  float y;
-  float scale;
-  int k;
-  float f0;
-  float absxk;
-  float t;
-  y = 0.0F;
-  scale = 1.29246971E-26F;
-  for (k = 0; k < 3; k++) {
-    absxk = (float)fabs((double)x[k]);
-    if (absxk > scale) {
-      t = scale / absxk;
-      y = 1.0F + y * t * t;
-      scale = absxk;
-    } else {
-      t = absxk / scale;
-      y += t * t;
+    float y;
+    float scale;
+    int   k;
+    float f0;
+    float absxk;
+    float t;
+    y     = 0.0F;
+    scale = 1.29246971E-26F;
+    for (k = 0; k < 3; k++) {
+        absxk = (float)fabs((double)x[k]);
+        if (absxk > scale) {
+            t     = scale / absxk;
+            y     = 1.0F + y * t * t;
+            scale = absxk;
+        } else {
+            t = absxk / scale;
+            y += t * t;
+        }
     }
-  }
 
-  mw_arm_sqrt_f32(y, &f0);
-  return scale * f0;
+    mw_arm_sqrt_f32(y, &f0);
+    return scale * f0;
 }
 
 //

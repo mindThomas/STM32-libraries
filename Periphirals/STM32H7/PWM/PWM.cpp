@@ -157,7 +157,7 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
         return;
     }
     if (((timer == TIMER1 || timer == TIMER3 || timer == TIMER8) && channel > CH4) || // channel 1-4
-        ((timer == TIMER15 || timer == TIMER17) && channel > CH1)) // only channel 1
+        ((timer == TIMER15 || timer == TIMER17) && channel > CH1))                    // only channel 1
     {
         _hRes = 0;
         ERROR("Invalid channel for selected timer");

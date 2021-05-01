@@ -15,45 +15,45 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #include "FirstOrderLPF.h"
 #include "MathLib.h"
 #include <cmath>
 
-FirstOrderLPF::FirstOrderLPF(float Ts, float freq3dB) : _Ts(Ts)
+FirstOrderLPF::FirstOrderLPF(float Ts, float freq3dB)
+    : _Ts(Ts)
 {
-	ChangeFrequency(freq3dB);
-	Reset();
+    ChangeFrequency(freq3dB);
+    Reset();
 }
 
-FirstOrderLPF::~FirstOrderLPF()
-{
-}
+FirstOrderLPF::~FirstOrderLPF() {}
 
 // Filter a given input using the first order LPF
 float FirstOrderLPF::Filter(float input)
-{	
-	float out = _coeff_b * input + _coeff_b * _inputOld - _coeff_a * _lpfOld; // IIR difference equation implementation
-	_lpfOld = out;
-	_inputOld = input;
-	return out;
+{
+    float out = _coeff_b * input + _coeff_b * _inputOld - _coeff_a * _lpfOld; // IIR difference equation implementation
+    _lpfOld   = out;
+    _inputOld = input;
+    return out;
 }
 
 void FirstOrderLPF::Reset(void)
 {
-	_inputOld = 0;
-	_lpfOld = 0;
+    _inputOld = 0;
+    _lpfOld   = 0;
 }
 
 void FirstOrderLPF::ChangeFrequency(float freq3dB)
 {
-	// Calculate filter coefficients for a  of First order Low-pass filter using the Tustin (Bilinear) transform with frequency warping
-	float omega_continuous = M_2PI * freq3dB;
-	float omega_digital = _Ts * omega_continuous; // omega_continuous / fs
-	float omega_continuous_warped = 2.f/_Ts * tanf(omega_digital/2.f);
-	float tau = 1.f / omega_continuous_warped;
+    // Calculate filter coefficients for a  of First order Low-pass filter using the Tustin (Bilinear) transform with
+    // frequency warping
+    float omega_continuous        = M_2PI * freq3dB;
+    float omega_digital           = _Ts * omega_continuous; // omega_continuous / fs
+    float omega_continuous_warped = 2.f / _Ts * tanf(omega_digital / 2.f);
+    float tau                     = 1.f / omega_continuous_warped;
 
-	_coeff_b = 1.f/(2.f*tau/_Ts + 1.f); // nominator
-	_coeff_a = 1.f/(2.f*tau/_Ts + 1.f) - 2.f/(2.f + _Ts/tau); // denominator
-	_freq3dB = freq3dB;
+    _coeff_b = 1.f / (2.f * tau / _Ts + 1.f);                           // nominator
+    _coeff_a = 1.f / (2.f * tau / _Ts + 1.f) - 2.f / (2.f + _Ts / tau); // denominator
+    _freq3dB = freq3dB;
 }

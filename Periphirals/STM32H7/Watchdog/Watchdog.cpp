@@ -15,15 +15,9 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#include "Watchdog.h"
- 
-Watchdog::Watchdog()
-{
-	
-}
 
-Watchdog::~Watchdog()
-{
-	
-}
+#include "Watchdog.h"
+
+Watchdog::Watchdog() {}
+
+Watchdog::~Watchdog() {}

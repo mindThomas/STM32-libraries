@@ -15,29 +15,30 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #include "ModuleTemplate.h"
 #include "cmsis_os.h" // for processing task
 
 #include "Debug.h"
 
-ModuleTemplate::ModuleTemplate(uint32_t moduleTaskPriority) : _moduleTaskHandle(0)
+ModuleTemplate::ModuleTemplate(uint32_t moduleTaskPriority)
+    : _moduleTaskHandle(0)
 {
-	xTaskCreate(ModuleTemplate::ModuleTemplateThread, (char *)"Module Template", MODULE_TEMPLATE_THREAD_STACK, (void*) this, moduleTaskPriority, &_moduleTaskHandle);
+    xTaskCreate(ModuleTemplate::ModuleTemplateThread, (char*)"Module Template", MODULE_TEMPLATE_THREAD_STACK,
+                (void*)this, moduleTaskPriority, &_moduleTaskHandle);
 }
 
 ModuleTemplate::~ModuleTemplate()
 {
-	if (_moduleTaskHandle)
-		vTaskDelete(_moduleTaskHandle); // stop task
+    if (_moduleTaskHandle)
+        vTaskDelete(_moduleTaskHandle); // stop task
 }
 
-void ModuleTemplate::ModuleTemplateThread(void * pvParameters)
+void ModuleTemplate::ModuleTemplateThread(void* pvParameters)
 {
-	ModuleTemplate * module = (ModuleTemplate *)pvParameters;
+    ModuleTemplate* module = (ModuleTemplate*)pvParameters;
 
-	while (1)
-	{		
-		osDelay(1000);
-	}
+    while (1) {
+        osDelay(1000);
+    }
 }

@@ -29,64 +29,66 @@
 
 class IO
 {
-	public:
-		typedef enum interrupt_trigger_t {
-			TRIGGER_RISING = 0,
-			TRIGGER_FALLING,
-			TRIGGER_BOTH
-		} interrupt_trigger_t;
+public:
+    typedef enum interrupt_trigger_t
+    {
+        TRIGGER_RISING = 0,
+        TRIGGER_FALLING,
+        TRIGGER_BOTH
+    } interrupt_trigger_t;
 
-		typedef enum pull_t {
-			PULL_NONE = 0,
-			PULL_UP,
-			PULL_DOWN,
-		} pull_t;
+    typedef enum pull_t
+    {
+        PULL_NONE = 0,
+        PULL_UP,
+        PULL_DOWN,
+    } pull_t;
 
-	public:
-		IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin); // configure as output
-		IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, pull_t pull); // configure as input
-		~IO();
+public:
+    IO(GPIO_TypeDef* GPIOx, uint32_t GPIO_Pin);              // configure as output
+    IO(GPIO_TypeDef* GPIOx, uint32_t GPIO_Pin, pull_t pull); // configure as input
+    ~IO();
 
 #ifdef USE_FREERTOS
-		void RegisterInterrupt(interrupt_trigger_t trigger, SemaphoreHandle_t semaphore);
+    void RegisterInterrupt(interrupt_trigger_t trigger, SemaphoreHandle_t semaphore);
 #endif
 
-		void RegisterInterrupt(interrupt_trigger_t trigger, void (*InterruptCallback)(void * params), void * callbackParams);
-		void DeregisterInterrupt();
+    void RegisterInterrupt(interrupt_trigger_t trigger, void (*InterruptCallback)(void* params), void* callbackParams);
+    void DeregisterInterrupt();
 
-		void Set(bool state);
-		bool Read();
-		void High();
-		void Low();
-		void Toggle();
+    void Set(bool state);
+    bool Read();
+    void High();
+    void Low();
+    void Toggle();
 
-		void ChangeToInput(pull_t pull);
-		void ChangeToOutput(bool state = false);
-		void ChangeToOpenDrain(bool state = false);
+    void ChangeToInput(pull_t pull);
+    void ChangeToOutput(bool state = false);
+    void ChangeToOpenDrain(bool state = false);
 
-	private:
-		void ConfigurePin(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, bool isInput, bool isOpenDrain, pull_t pull);
+private:
+    void ConfigurePin(GPIO_TypeDef* GPIOx, uint32_t GPIO_Pin, bool isInput, bool isOpenDrain, pull_t pull);
 
-	public:
-		void (*_InterruptCallback)(void * params);
-		void * _InterruptCallbackParams;
+public:
+    void (*_InterruptCallback)(void* params);
+    void* _InterruptCallbackParams;
 #ifdef USE_FREERTOS
-        SemaphoreHandle_t _InterruptSemaphore;
+    SemaphoreHandle_t _InterruptSemaphore;
 #endif
 
-		static IO * interruptObjects[16]; // we only have 16 interrupt lines
+    static IO* interruptObjects[16]; // we only have 16 interrupt lines
 
-	private:
-		GPIO_TypeDef * _GPIO;
-		uint32_t _pin;
-		bool _isInput;
-		bool _isOpenDrain;
-		pull_t _pull;
+private:
+    GPIO_TypeDef* _GPIO;
+    uint32_t      _pin;
+    bool          _isInput;
+    bool          _isOpenDrain;
+    pull_t        _pull;
 
-	private:
-		void ConfigureInterrupt(interrupt_trigger_t level);
-		void DisableInterrupt();
+private:
+    void ConfigureInterrupt(interrupt_trigger_t level);
+    void DisableInterrupt();
 
-	public:
-		static void InterruptHandler(IO * io);
+public:
+    static void InterruptHandler(IO* io);
 };

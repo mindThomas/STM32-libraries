@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "sqrt.h"
 #include "mw_cmsis.h"
 #include "rt_nonfinite.h"
-#include "sqrt.h"
 
 // Function Definitions
 
@@ -19,11 +19,11 @@
 // Arguments    : float *x
 // Return Type  : void
 //
-void b_sqrt(float *x)
+void b_sqrt(float* x)
 {
-  float f2;
-  mw_arm_sqrt_f32(*x, &f2);
-  *x = f2;
+    float f2;
+    mw_arm_sqrt_f32(*x, &f2);
+    *x = f2;
 }
 
 //

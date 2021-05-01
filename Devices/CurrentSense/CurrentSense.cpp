@@ -15,10 +15,7 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #include "CurrentSense.h"
- 
-CurrentSense::CurrentSense()
-{
-	
-}
+
+CurrentSense::CurrentSense() {}

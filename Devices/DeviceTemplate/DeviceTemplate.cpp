@@ -15,15 +15,9 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#include "DeviceTemplate.h"
- 
-DeviceTemplate::DeviceTemplate()
-{
-	
-}
 
-DeviceTemplate::~DeviceTemplate()
-{
-	
-}
+#include "DeviceTemplate.h"
+
+DeviceTemplate::DeviceTemplate() {}
+
+DeviceTemplate::~DeviceTemplate() {}

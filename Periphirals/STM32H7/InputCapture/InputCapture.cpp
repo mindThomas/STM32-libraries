@@ -15,17 +15,11 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-/* Use input capture to measure time between rising and/or falling edges of an input */
- 
-#include "InputCapture.hpp"
- 
-InputCapture::InputCapture()
-{
-	
-}
 
-InputCapture::~InputCapture()
-{
-	
-}
+/* Use input capture to measure time between rising and/or falling edges of an input */
+
+#include "InputCapture.hpp"
+
+InputCapture::InputCapture() {}
+
+InputCapture::~InputCapture() {}

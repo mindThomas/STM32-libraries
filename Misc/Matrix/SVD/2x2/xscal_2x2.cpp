@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xscal_2x2.h"
 #include "rt_nonfinite.h"
 #include "svd_2x2.h"
-#include "xscal_2x2.h"
 
 // Function Definitions
 
@@ -23,10 +23,10 @@
 //
 void xscal_2x2(float a, float x[4], int ix0)
 {
-  int k;
-  for (k = ix0; k <= ix0 + 1; k++) {
-    x[k - 1] *= a;
-  }
+    int k;
+    for (k = ix0; k <= ix0 + 1; k++) {
+        x[k - 1] *= a;
+    }
 }
 
 //

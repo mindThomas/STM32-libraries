@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xscal_3x3.h"
 #include "rt_nonfinite.h"
 #include "svd_3x3.h"
-#include "xscal_3x3.h"
 
 // Function Definitions
 
@@ -23,10 +23,10 @@
 //
 void xscal_3x3(float a, float x[9], int ix0)
 {
-  int k;
-  for (k = ix0; k <= ix0 + 2; k++) {
-    x[k - 1] *= a;
-  }
+    int k;
+    for (k = ix0; k <= ix0 + 2; k++) {
+        x[k - 1] *= a;
+    }
 }
 
 //

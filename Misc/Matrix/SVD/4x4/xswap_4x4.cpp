@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xswap_4x4.h"
 #include "rt_nonfinite.h"
 #include "svd_4x4.h"
-#include "xswap_4x4.h"
 
 // Function Definitions
 
@@ -23,19 +23,19 @@
 //
 void xswap_4x4(float x[16], int ix0, int iy0)
 {
-  int ix;
-  int iy;
-  int k;
-  float temp;
-  ix = ix0 - 1;
-  iy = iy0 - 1;
-  for (k = 0; k < 4; k++) {
-    temp = x[ix];
-    x[ix] = x[iy];
-    x[iy] = temp;
-    ix++;
-    iy++;
-  }
+    int   ix;
+    int   iy;
+    int   k;
+    float temp;
+    ix = ix0 - 1;
+    iy = iy0 - 1;
+    for (k = 0; k < 4; k++) {
+        temp  = x[ix];
+        x[ix] = x[iy];
+        x[iy] = temp;
+        ix++;
+        iy++;
+    }
 }
 
 //

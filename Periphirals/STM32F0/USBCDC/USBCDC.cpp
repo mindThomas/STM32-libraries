@@ -15,341 +15,352 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
+
 #include "USBCDC.h"
 
 #include "Debug.h"
 
+#include "usbd_cdc.h"
+#include "usbd_cdc_if.h"
 #include "usbd_conf.h"
 #include "usbd_core.h"
 #include "usbd_desc.h"
-#include "usbd_cdc.h"
-#include "usbd_cdc_if.h"
 
-USBCDC * USBCDC::usbHandle = 0;
+USBCDC*            USBCDC::usbHandle = 0;
 USBD_HandleTypeDef USBCDC::hUsbDeviceFS;
-PCD_HandleTypeDef USBCDC::hpcd_USB_FS;
+PCD_HandleTypeDef  USBCDC::hpcd_USB_FS;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" void USB_IRQHandler(void);
 
 #ifdef USE_FREERTOS
-USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TXfinishedSemaphore(0), _RXdataAvailable(0), _TXqueue(0), _RXqueue(0), _connected(false)
+USBCDC::USBCDC(uint32_t transmitterTaskPriority)
+    : _processingTaskHandle(0)
+    , _TXfinishedSemaphore(0)
+    , _RXdataAvailable(0)
+    , _TXqueue(0)
+    , _RXqueue(0)
+    , _connected(false)
 #else
-USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _connected(false)
+USBCDC::USBCDC(uint32_t transmitterTaskPriority)
+    : _connected(false)
 #endif
 {
-	if (usbHandle) {
-		ERROR("USB object already created");
-		return;
-	}
+    if (usbHandle) {
+        ERROR("USB object already created");
+        return;
+    }
 
-	_tmpPackageForRead.length = 0;
-	_readIndex = 0;
-
-#ifdef USE_FREERTOS
-	_resourceSemaphore = xSemaphoreCreateBinary();
-	if (_resourceSemaphore == NULL) {
-		ERROR("Could not create USBCDC resource semaphore");
-		return;
-	}
-	vQueueAddToRegistry(_resourceSemaphore, "USBCDC Resource");
-
-	_TXqueue = xQueueCreate( USBCDC_TX_QUEUE_LENGTH, sizeof(USB_CDC_Package_t) );
-	if (_TXqueue == NULL) {
-		ERROR("Could not create USBCDC TX queue");
-		return;
-	}
-	vQueueAddToRegistry(_TXqueue, "USB TX");
-	CDC_RegisterReceiveQueue(_TXqueue);
-
-	_RXqueue = xQueueCreate( USBCDC_RX_QUEUE_LENGTH, sizeof(USB_CDC_Package_t) );
-	if (_RXqueue == NULL) {
-		ERROR("Could not create USBCDC RX queue");
-		return;
-	}
-	vQueueAddToRegistry(_RXqueue, "USB RX");
-	CDC_RegisterReceiveQueue(_RXqueue);
-
-	_RXdataAvailable = xSemaphoreCreateBinary();
-	if (_RXdataAvailable == NULL) {
-		ERROR("Could not create USBCDC RX available semaphore");
-		return;
-	}
-	vQueueAddToRegistry(_RXdataAvailable, "USB RX Available");
-	CDC_RegisterRXsemaphore(_RXdataAvailable);
-
-	_TXfinishedSemaphore = xSemaphoreCreateBinary();
-	if (_TXfinishedSemaphore == NULL) {
-		ERROR("Could not create USBCDC TX semaphore");
-		return;
-	}
-	vQueueAddToRegistry(_TXfinishedSemaphore, "USB TX Finished");
-	USBD_CDC_SetTXfinishedSemaphore(_TXfinishedSemaphore);
-#endif
-
-	/* Init USB Device Library, add supported class and start the library. */
-	USBD_LL_SetPCD(&USBCDC::hpcd_USB_FS);
-	if (USBD_Init(&USBCDC::hUsbDeviceFS, &FS_Desc, DEVICE_FS) != USBD_OK)
-	{
-		Error_Handler();
-	}
-	if (USBD_RegisterClass(&USBCDC::hUsbDeviceFS, &USBD_CDC) != USBD_OK)
-	{
-		Error_Handler();
-	}
-	CDC_RegisterUsbDeviceObject(&USBCDC::hUsbDeviceFS);
-	if (USBD_CDC_RegisterInterface(&USBCDC::hUsbDeviceFS, &USBD_Interface_fops_FS) != USBD_OK)
-	{
-		Error_Handler();
-	}
-	if (USBD_Start(&USBCDC::hUsbDeviceFS) != USBD_OK)
-	{
-		Error_Handler();
-	}
+    _tmpPackageForRead.length = 0;
+    _readIndex                = 0;
 
 #ifdef USE_FREERTOS
-	xTaskCreate(USBCDC::TransmitterThread, (char *)"USB transmitter", USBCDC_TX_PROCESSING_THREAD_STACK_SIZE, (void*) this, transmitterTaskPriority, &_processingTaskHandle);
+    _resourceSemaphore = xSemaphoreCreateBinary();
+    if (_resourceSemaphore == NULL) {
+        ERROR("Could not create USBCDC resource semaphore");
+        return;
+    }
+    vQueueAddToRegistry(_resourceSemaphore, "USBCDC Resource");
+
+    _TXqueue = xQueueCreate(USBCDC_TX_QUEUE_LENGTH, sizeof(USB_CDC_Package_t));
+    if (_TXqueue == NULL) {
+        ERROR("Could not create USBCDC TX queue");
+        return;
+    }
+    vQueueAddToRegistry(_TXqueue, "USB TX");
+    CDC_RegisterReceiveQueue(_TXqueue);
+
+    _RXqueue = xQueueCreate(USBCDC_RX_QUEUE_LENGTH, sizeof(USB_CDC_Package_t));
+    if (_RXqueue == NULL) {
+        ERROR("Could not create USBCDC RX queue");
+        return;
+    }
+    vQueueAddToRegistry(_RXqueue, "USB RX");
+    CDC_RegisterReceiveQueue(_RXqueue);
+
+    _RXdataAvailable = xSemaphoreCreateBinary();
+    if (_RXdataAvailable == NULL) {
+        ERROR("Could not create USBCDC RX available semaphore");
+        return;
+    }
+    vQueueAddToRegistry(_RXdataAvailable, "USB RX Available");
+    CDC_RegisterRXsemaphore(_RXdataAvailable);
+
+    _TXfinishedSemaphore = xSemaphoreCreateBinary();
+    if (_TXfinishedSemaphore == NULL) {
+        ERROR("Could not create USBCDC TX semaphore");
+        return;
+    }
+    vQueueAddToRegistry(_TXfinishedSemaphore, "USB TX Finished");
+    USBD_CDC_SetTXfinishedSemaphore(_TXfinishedSemaphore);
 #endif
 
-	usbHandle = this;
+    /* Init USB Device Library, add supported class and start the library. */
+    USBD_LL_SetPCD(&USBCDC::hpcd_USB_FS);
+    if (USBD_Init(&USBCDC::hUsbDeviceFS, &FS_Desc, DEVICE_FS) != USBD_OK) {
+        Error_Handler();
+    }
+    if (USBD_RegisterClass(&USBCDC::hUsbDeviceFS, &USBD_CDC) != USBD_OK) {
+        Error_Handler();
+    }
+    CDC_RegisterUsbDeviceObject(&USBCDC::hUsbDeviceFS);
+    if (USBD_CDC_RegisterInterface(&USBCDC::hUsbDeviceFS, &USBD_Interface_fops_FS) != USBD_OK) {
+        Error_Handler();
+    }
+    if (USBD_Start(&USBCDC::hUsbDeviceFS) != USBD_OK) {
+        Error_Handler();
+    }
+
+#ifdef USE_FREERTOS
+    xTaskCreate(USBCDC::TransmitterThread, (char*)"USB transmitter", USBCDC_TX_PROCESSING_THREAD_STACK_SIZE,
+                (void*)this, transmitterTaskPriority, &_processingTaskHandle);
+#endif
+
+    usbHandle = this;
 }
 
 USBCDC::~USBCDC()
 {
 #ifdef USE_FREERTOS
-	if (_processingTaskHandle)
-		vTaskDelete(_processingTaskHandle); // stop task
+    if (_processingTaskHandle)
+        vTaskDelete(_processingTaskHandle); // stop task
 
-	if (_resourceSemaphore) {
-		vQueueUnregisterQueue(_resourceSemaphore);
-		vSemaphoreDelete(_resourceSemaphore);
-	}
+    if (_resourceSemaphore) {
+        vQueueUnregisterQueue(_resourceSemaphore);
+        vSemaphoreDelete(_resourceSemaphore);
+    }
 
-	if (_RXdataAvailable) {
-		vQueueUnregisterQueue(_RXdataAvailable);
-		vSemaphoreDelete(_RXdataAvailable);
-	}
+    if (_RXdataAvailable) {
+        vQueueUnregisterQueue(_RXdataAvailable);
+        vSemaphoreDelete(_RXdataAvailable);
+    }
 
-	if (_TXfinishedSemaphore) {
-		vQueueUnregisterQueue(_TXfinishedSemaphore);
-		vSemaphoreDelete(_TXfinishedSemaphore);
-	}
+    if (_TXfinishedSemaphore) {
+        vQueueUnregisterQueue(_TXfinishedSemaphore);
+        vSemaphoreDelete(_TXfinishedSemaphore);
+    }
 
-	if (_TXfinishedSemaphore) {
-		vQueueUnregisterQueue(_TXfinishedSemaphore);
-		vSemaphoreDelete(_TXfinishedSemaphore);
-	}
+    if (_TXfinishedSemaphore) {
+        vQueueUnregisterQueue(_TXfinishedSemaphore);
+        vSemaphoreDelete(_TXfinishedSemaphore);
+    }
 
-	if (_TXqueue) {
-		vQueueUnregisterQueue(_TXqueue);
-		vQueueDelete(_TXqueue);
-	}
+    if (_TXqueue) {
+        vQueueUnregisterQueue(_TXqueue);
+        vQueueDelete(_TXqueue);
+    }
 
-	if (_RXqueue) {
-		vQueueUnregisterQueue(_RXqueue);
-		vQueueDelete(_RXqueue);
-	}
+    if (_RXqueue) {
+        vQueueUnregisterQueue(_RXqueue);
+        vQueueDelete(_RXqueue);
+    }
 #endif
 
-	USBD_Stop(&USBCDC::hUsbDeviceFS);
-	usbHandle = NULL;
+    USBD_Stop(&USBCDC::hUsbDeviceFS);
+    usbHandle = NULL;
 }
 
-bool USBCDC::GetPackage(USB_CDC_Package_t * packageBuffer)
+bool USBCDC::GetPackage(USB_CDC_Package_t* packageBuffer)
 {
-	if (!packageBuffer) return false;
+    if (!packageBuffer)
+        return false;
 
 #ifdef USE_FREERTOS
-	if ( xQueueReceive( _RXqueue, packageBuffer, ( TickType_t ) 0 ) == pdPASS )
-		return true;
-	else
-		return false;
+    if (xQueueReceive(_RXqueue, packageBuffer, (TickType_t)0) == pdPASS)
+        return true;
+    else
+        return false;
 #else
-	 return false; // reading not implemented without FreeRTOS yet
+    return false; // reading not implemented without FreeRTOS yet
 #endif
 }
 
 #ifdef USE_FREERTOS
 void USBCDC::Write(uint8_t byte)
 {
-	USB_CDC_Package_t package;
+    USB_CDC_Package_t package;
 
-	if (xSemaphoreTake( _resourceSemaphore, ( TickType_t ) 1 ) != pdTRUE ) return; // take hardware resource - wait maximum 1 ms on this
-	package.data[0] = byte;
-	package.length = 1;
-	xQueueSend(_TXqueue, (void *)&package, (TickType_t) 1);
-	xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
+    if (xSemaphoreTake(_resourceSemaphore, (TickType_t)1) != pdTRUE)
+        return; // take hardware resource - wait maximum 1 ms on this
+    package.data[0] = byte;
+    package.length  = 1;
+    xQueueSend(_TXqueue, (void*)&package, (TickType_t)1);
+    xSemaphoreGive(_resourceSemaphore); // give hardware resource back
 }
 
-uint32_t USBCDC::Write(uint8_t * buffer, uint32_t length)
+uint32_t USBCDC::Write(uint8_t* buffer, uint32_t length)
 {
-	USB_CDC_Package_t package;
+    USB_CDC_Package_t package;
 
-	uint32_t txLength = length;
-	uint8_t packageLength;
+    uint32_t txLength = length;
+    uint8_t  packageLength;
 
-	//if (xSemaphoreTake( _resourceSemaphore, ( TickType_t ) 1 ) != pdTRUE ) return 0; // take hardware resource - wait max 1 ms
+    // if (xSemaphoreTake( _resourceSemaphore, ( TickType_t ) 1 ) != pdTRUE ) return 0; // take hardware resource - wait
+    // max 1 ms
 
-	// Split buffer data into packages
-	while (txLength > 0) {
-		if (txLength > USB_PACKAGE_MAX_SIZE)
-			packageLength = USB_PACKAGE_MAX_SIZE;
-		else
-			packageLength = txLength;
+    // Split buffer data into packages
+    while (txLength > 0) {
+        if (txLength > USB_PACKAGE_MAX_SIZE)
+            packageLength = USB_PACKAGE_MAX_SIZE;
+        else
+            packageLength = txLength;
 
-		memcpy(package.data, buffer, packageLength);
-		package.length = packageLength;
+        memcpy(package.data, buffer, packageLength);
+        package.length = packageLength;
 
-		xQueueSend(_TXqueue, (void *)&package, (TickType_t) 0);
+        xQueueSend(_TXqueue, (void*)&package, (TickType_t)0);
 
-		buffer += packageLength;
-		txLength -= packageLength;
-	}
+        buffer += packageLength;
+        txLength -= packageLength;
+    }
 
-	//xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
+    // xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
 
-	return length;
+    return length;
 }
 
-uint32_t USBCDC::WriteBlocking(uint8_t * buffer, uint32_t length)
+uint32_t USBCDC::WriteBlocking(uint8_t* buffer, uint32_t length)
 {
-	if (!_connected) return 0;
+    if (!_connected)
+        return 0;
 
-	xSemaphoreTake( _resourceSemaphore, ( TickType_t ) portMAX_DELAY); // take hardware resource
+    xSemaphoreTake(_resourceSemaphore, (TickType_t)portMAX_DELAY); // take hardware resource
 
-	if (CDC_IsConnected()) {
-		if (CDC_Transmit_FS_ThreadBlocking(buffer, length) != USBD_OK) {
-			xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
-			return 0; // error, could not transmit package
-		}
-	}
+    if (CDC_IsConnected()) {
+        if (CDC_Transmit_FS_ThreadBlocking(buffer, length) != USBD_OK) {
+            xSemaphoreGive(_resourceSemaphore); // give hardware resource back
+            return 0;                           // error, could not transmit package
+        }
+    }
 
-	xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
+    xSemaphoreGive(_resourceSemaphore); // give hardware resource back
 
-	return length;
+    return length;
 }
 #else
 void USBCDC::Write(uint8_t byte)
 {
-	WriteBlocking(&byte, 1);
+    WriteBlocking(&byte, 1);
 }
 
-uint32_t USBCDC::Write(uint8_t * buffer, uint32_t length)
+uint32_t USBCDC::Write(uint8_t* buffer, uint32_t length)
 {
-	return WriteBlocking(buffer, length);
+    return WriteBlocking(buffer, length);
 }
 
-uint32_t USBCDC::WriteBlocking(uint8_t * buffer, uint32_t length)
+uint32_t USBCDC::WriteBlocking(uint8_t* buffer, uint32_t length)
 {
-	if (!Connected()) return 0;
+    if (!Connected())
+        return 0;
 
-	if (CDC_IsConnected()) {
-		while (CDC_Transmit_FS(buffer, length) != USBD_OK);
-	}
+    if (CDC_IsConnected()) {
+        while (CDC_Transmit_FS(buffer, length) != USBD_OK)
+            ;
+    }
 
-	return length;
+    return length;
 }
 #endif
 
 int16_t USBCDC::Read()
 {
-	uint8_t returnValue;
+    uint8_t returnValue;
 
-	if (_readIndex == _tmpPackageForRead.length) { // load in new package for reading (if possible)
-		_tmpPackageForRead.length = 0;
-		_readIndex = 0;
-	#ifdef USE_FREERTOS
-		if ( xQueueReceive( _RXqueue, &_tmpPackageForRead, ( TickType_t ) 1 ) != pdPASS ) {
-			return -1; // no new package
-		}
-	#else
-		return -1; // reading not implemented without FreeRTOS yet
-	#endif
-	}
+    if (_readIndex == _tmpPackageForRead.length) { // load in new package for reading (if possible)
+        _tmpPackageForRead.length = 0;
+        _readIndex                = 0;
+#ifdef USE_FREERTOS
+        if (xQueueReceive(_RXqueue, &_tmpPackageForRead, (TickType_t)1) != pdPASS) {
+            return -1; // no new package
+        }
+#else
+        return -1; // reading not implemented without FreeRTOS yet
+#endif
+    }
 
-	returnValue = _tmpPackageForRead.data[_readIndex];
-	_readIndex++;
+    returnValue = _tmpPackageForRead.data[_readIndex];
+    _readIndex++;
 
-	return returnValue;
+    return returnValue;
 }
 
 bool USBCDC::Available()
 {
 #ifdef USE_FREERTOS
-	if (_readIndex != _tmpPackageForRead.length || uxQueueMessagesWaiting(_RXqueue) > 0)
-		return true;
-	else
-		return false;
+    if (_readIndex != _tmpPackageForRead.length || uxQueueMessagesWaiting(_RXqueue) > 0)
+        return true;
+    else
+        return false;
 #else
-	return false; // reading not implemented without FreeRTOS yet
+    return false;  // reading not implemented without FreeRTOS yet
 #endif
 }
 
 uint32_t USBCDC::WaitForNewData(uint32_t xTicksToWait) // blocking call
 {
 #ifdef USE_FREERTOS
-	return xSemaphoreTake( _RXdataAvailable, ( TickType_t ) xTicksToWait );
+    return xSemaphoreTake(_RXdataAvailable, (TickType_t)xTicksToWait);
 #else
-	return false; // reading not implemented without FreeRTOS yet
+    return false;  // reading not implemented without FreeRTOS yet
 #endif
 }
 
 bool USBCDC::Connected()
 {
 #ifdef USE_FREERTOS
-	return _connected;
+    return _connected;
 #else
-	return CDC_IsConnected();
+    return CDC_IsConnected();
 #endif
 }
 
 #ifdef USE_FREERTOS
-void USBCDC::TransmitterThread(void * pvParameters)
+void USBCDC::TransmitterThread(void* pvParameters)
 {
-	USB_CDC_Package_t package;
-	USBCDC * usb = (USBCDC *)pvParameters;
+    USB_CDC_Package_t package;
+    USBCDC*           usb = (USBCDC*)pvParameters;
 
-	xSemaphoreGive( usb->_resourceSemaphore ); // give the semaphore the first time
+    xSemaphoreGive(usb->_resourceSemaphore); // give the semaphore the first time
 
-	while (1) {
-		usb->_connected = false;
-		xSemaphoreTake( usb->_resourceSemaphore, ( TickType_t ) portMAX_DELAY); // take hardware resource
+    while (1) {
+        usb->_connected = false;
+        xSemaphoreTake(usb->_resourceSemaphore, (TickType_t)portMAX_DELAY); // take hardware resource
 
-		while (!CDC_IsConnected()) {
-			xQueueReset(usb->_TXqueue);
-			osDelay(1);
-		}
+        while (!CDC_IsConnected()) {
+            xQueueReset(usb->_TXqueue);
+            osDelay(1);
+        }
 
-		// Wait for the USB connection to be ready
-		// Send initial zero package - wait for communication channel to be opened
-		memset(package.data, 0, USB_PACKAGE_MAX_SIZE);
-		while (CDC_Transmit_FS(package.data, USB_PACKAGE_MAX_SIZE) != USBD_OK) {
-			xQueueReset(usb->_TXqueue);
-			osDelay(1);
-		}
+        // Wait for the USB connection to be ready
+        // Send initial zero package - wait for communication channel to be opened
+        memset(package.data, 0, USB_PACKAGE_MAX_SIZE);
+        while (CDC_Transmit_FS(package.data, USB_PACKAGE_MAX_SIZE) != USBD_OK) {
+            xQueueReset(usb->_TXqueue);
+            osDelay(1);
+        }
 
-		xSemaphoreGive( usb->_resourceSemaphore ); // give hardware resource back
+        xSemaphoreGive(usb->_resourceSemaphore); // give hardware resource back
 
-		usb->_connected = true;
+        usb->_connected = true;
 
-		// Transmit processing loop
-		memset(package.data, 0, USB_PACKAGE_MAX_SIZE);
-		while (CDC_IsConnected()) {
-			if ( xQueueReceive( usb->_TXqueue, &package, ( TickType_t ) 100 ) == pdPASS ) { // check USB connection every 100 ms
-				xSemaphoreTake( usb->_resourceSemaphore, ( TickType_t ) portMAX_DELAY); // take hardware resource
-				if (CDC_Transmit_FS_ThreadBlocking(package.data, package.length) != USBD_OK) {
-					xSemaphoreGive( usb->_resourceSemaphore ); // give hardware resource back
-					break; // disconnected or other problem
-				}
-				xSemaphoreGive( usb->_resourceSemaphore ); // give hardware resource back
-			}
-		}
-	}
+        // Transmit processing loop
+        memset(package.data, 0, USB_PACKAGE_MAX_SIZE);
+        while (CDC_IsConnected()) {
+            if (xQueueReceive(usb->_TXqueue, &package, (TickType_t)100) ==
+                pdPASS) {                                                           // check USB connection every 100 ms
+                xSemaphoreTake(usb->_resourceSemaphore, (TickType_t)portMAX_DELAY); // take hardware resource
+                if (CDC_Transmit_FS_ThreadBlocking(package.data, package.length) != USBD_OK) {
+                    xSemaphoreGive(usb->_resourceSemaphore); // give hardware resource back
+                    break;                                   // disconnected or other problem
+                }
+                xSemaphoreGive(usb->_resourceSemaphore); // give hardware resource back
+            }
+        }
+    }
 }
 #endif
 
 void USB_IRQHandler(void)
 {
-	HAL_PCD_IRQHandler(&USBCDC::hpcd_USB_FS);
+    HAL_PCD_IRQHandler(&USBCDC::hpcd_USB_FS);
 }

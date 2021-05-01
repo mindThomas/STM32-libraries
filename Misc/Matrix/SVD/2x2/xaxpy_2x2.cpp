@@ -9,9 +9,9 @@
 //
 
 // Include Files
+#include "xaxpy_2x2.h"
 #include "rt_nonfinite.h"
 #include "svd_2x2.h"
-#include "xaxpy_2x2.h"
 
 // Function Definitions
 
@@ -22,18 +22,18 @@
 //
 void xaxpy_2x2(float a, float y[4])
 {
-  int ix;
-  int iy;
-  int k;
-  if (!(a == 0.0F)) {
-    ix = 0;
-    iy = 2;
-    for (k = 0; k < 2; k++) {
-      y[iy] += a * y[ix];
-      ix++;
-      iy++;
+    int ix;
+    int iy;
+    int k;
+    if (!(a == 0.0F)) {
+        ix = 0;
+        iy = 2;
+        for (k = 0; k < 2; k++) {
+            y[iy] += a * y[ix];
+            ix++;
+            iy++;
+        }
     }
-  }
 }
 
 //

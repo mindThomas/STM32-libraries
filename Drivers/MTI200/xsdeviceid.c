@@ -22,8 +22,8 @@
  */
 bool XsDeviceId_isMtMk4_X(uint32_t deviceId)
 {
-	uint8_t deviceSeries = (deviceId >> 20) & 0xF;
-	return ((deviceSeries == 0x8) || (deviceSeries == 0xC));
+    uint8_t deviceSeries = (deviceId >> 20) & 0xF;
+    return ((deviceSeries == 0x8) || (deviceSeries == 0xC));
 }
 
 /*!
@@ -31,18 +31,16 @@ bool XsDeviceId_isMtMk4_X(uint32_t deviceId)
  */
 char const* XsDeviceId_functionDescription(enum DeviceFunction function)
 {
-	switch (function)
-	{
-		case DF_IMU:
-			return "Inertial Measurement Unit";
+    switch (function) {
+        case DF_IMU:
+            return "Inertial Measurement Unit";
 
-		case DF_VRU:
-			return "Vertical Reference Unit";
+        case DF_VRU:
+            return "Vertical Reference Unit";
 
-		case DF_AHRS:
-			return "Attitude Heading Reference System";
-	}
+        case DF_AHRS:
+            return "Attitude Heading Reference System";
+    }
 
-	return "Unknown device function";
+    return "Unknown device function";
 }
-
