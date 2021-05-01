@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,8 +16,7 @@
  * ------------------------------------------
  */
  
-#ifndef PERIPHIRALS_PWM_H
-#define PERIPHIRALS_PWM_H
+#pragma once
 
 #include "stm32h7xx_hal.h"
 
@@ -27,6 +26,7 @@ class PWM
 		typedef enum timer_t {
 			TIMER_UNDEFINED = 0,
 			TIMER1,
+            TIMER3,
 			TIMER8,
 			TIMER15,
 			TIMER17
@@ -62,6 +62,7 @@ class PWM
 		} hardware_resource_t;
 
 		static hardware_resource_t * resTIMER1;
+        static hardware_resource_t * resTIMER3;
 		static hardware_resource_t * resTIMER8;
 		static hardware_resource_t * resTIMER15;
 		static hardware_resource_t * resTIMER17;
@@ -72,6 +73,3 @@ class PWM
 		bool _complementaryOutput; // Channel xN ?
 		uint32_t _channelHAL;
 };
-	
-	
-#endif

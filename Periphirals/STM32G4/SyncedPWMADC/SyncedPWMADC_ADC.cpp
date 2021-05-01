@@ -23,9 +23,9 @@
 #include <math.h> // for roundf
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void DMA1_Channel1_IRQHandler(void);
-extern "C" __EXPORT void DMA1_Channel2_IRQHandler(void);
-extern "C" __EXPORT void ADC1_2_IRQHandler(void);
+extern "C" void DMA1_Channel1_IRQHandler(void);
+extern "C" void DMA1_Channel2_IRQHandler(void);
+extern "C" void ADC1_2_IRQHandler(void);
 
 void SyncedPWMADC::ConfigureAnalogPins()
 {

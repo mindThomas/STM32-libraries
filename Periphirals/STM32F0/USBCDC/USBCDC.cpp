@@ -31,7 +31,7 @@ USBD_HandleTypeDef USBCDC::hUsbDeviceFS;
 PCD_HandleTypeDef USBCDC::hpcd_USB_FS;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void USB_IRQHandler(void);
+extern "C" void USB_IRQHandler(void);
 
 #ifdef USE_FREERTOS
 USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TXfinishedSemaphore(0), _RXdataAvailable(0), _TXqueue(0), _RXqueue(0), _connected(false)

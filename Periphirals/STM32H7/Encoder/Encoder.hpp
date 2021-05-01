@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,23 +16,28 @@
  * ------------------------------------------
  */
  
-#ifndef PERIPHIRALS_INPUTCAPTURE_H
-#define PERIPHIRALS_INPUTCAPTURE_H
+#pragma once
 
 #include "stm32h7xx_hal.h"
 
-class InputCapture
+class Encoder
 {
 	public:
 		typedef enum timer_t {
 			TIMER_UNDEFINED = 0,
-			TIMER5,
-			TIMER14
+			TIMER2,
+			TIMER3,
+			TIMER4
 		} timer_t;
 
 	public:
-		InputCapture();
-		~InputCapture();
+		Encoder(timer_t timer);
+		~Encoder();
+
+		void ConfigureEncoderGPIO();
+		void ConfigureEncoderPeripheral();
+
+		int32_t Get();
 
 	public:
 		typedef struct hardware_resource_t {
@@ -47,7 +52,7 @@ class InputCapture
 	
 	private:
 		hardware_resource_t * _hRes;
+
+	public:
+		static void InterruptHandler(Encoder::hardware_resource_t * encoder);
 };
-	
-	
-#endif

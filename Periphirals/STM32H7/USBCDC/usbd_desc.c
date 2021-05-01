@@ -48,7 +48,7 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
-#include "usbd_core.h"
+#include "STM32_USB_Device_Library/Core/Inc/usbd_core.h"
 #include "usbd_desc.h"
 #include "usbd_conf.h"
 
@@ -91,11 +91,18 @@
   * @{
   */
 
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
 #define USBD_VID     1155
 #define USBD_LANGID_STRING     1033
 #define USBD_MANUFACTURER_STRING     "STMicroelectronics"
 #define USBD_PID_FS     0x5799//22336
-#define USBD_PRODUCT_STRING_FS     "Kugle STM32 Virtual ComPort"
+#ifdef STM32H7_USBCDC_DEVICE_NAME
+#define USBD_PRODUCT_STRING_FS TOSTRING(STM32H7_USBCDC_DEVICE_NAME)
+#else
+#define USBD_PRODUCT_STRING_FS     "STM32 Virtual ComPort" // default
+#endif
 #define USBD_SERIALNUMBER_STRING_FS     "001337001234"
 #define USBD_CONFIGURATION_STRING_FS     "CDC Config"
 #define USBD_INTERFACE_STRING_FS     "CDC Interface"

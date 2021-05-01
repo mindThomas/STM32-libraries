@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,12 +16,17 @@
  * ------------------------------------------
  */
  
-#include "EEPROM.h"
-#include "stm32h7xx_hal.h"
-#include "Debug.h"
+#include "EEPROM.hpp"
+
+#ifdef STM32H7_EEPROM_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 EEPROM::EEPROM()
 {
+#ifdef USE_FREERTOS
 	resourceSemaphore_ = xSemaphoreCreateBinary();
 	if (resourceSemaphore_ == NULL) {
 		ERROR("Could not create EEPROM resource semaphore");
@@ -29,6 +34,7 @@ EEPROM::EEPROM()
 	}
 	vQueueAddToRegistry(resourceSemaphore_, "EEPROM Resource");
 	xSemaphoreGive( resourceSemaphore_ ); // give the resource the first time
+#endif
 
 	virtAddrTable_ = new std::vector<uint16_t>;
 	if (virtAddrTable_ == NULL) {
@@ -43,10 +49,12 @@ EEPROM::EEPROM()
 
 EEPROM::~EEPROM()
 {
+#ifdef USE_FREERTOS
 	if (resourceSemaphore_) {
 		vQueueUnregisterQueue(resourceSemaphore_);
 		vSemaphoreDelete(resourceSemaphore_);
 	}
+#endif
 }
 
 bool EEPROM::CheckForAssignedStructureChange(void)
@@ -94,7 +102,9 @@ bool EEPROM::EnableSection(uint16_t address, uint16_t sectionSize)
 
 	if ((address % 2) != 0) return false; // address not aligned - section start addresses has to be aligned
 
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	// sectionSize is given in bytes
 	uint16_t virtAddress = address / 2;
@@ -122,7 +132,9 @@ bool EEPROM::EnableSection(uint16_t address, uint16_t sectionSize)
 		HAL_FLASH_Lock();
 	}*/
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 
 	return SectionAlreadyInUse;
 }
@@ -162,7 +174,9 @@ bool EEPROM::WasFormattedAtBoot(void)
 
 void EEPROM::Write8(uint16_t address, uint8_t value)
 {
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	HAL_FLASH_Unlock();
 
@@ -182,12 +196,16 @@ void EEPROM::Write8(uint16_t address, uint8_t value)
 
 	HAL_FLASH_Lock();
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 }
 
 void EEPROM::Write16(uint16_t address, uint16_t value)
 {
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	HAL_FLASH_Unlock();
 
@@ -216,12 +234,16 @@ void EEPROM::Write16(uint16_t address, uint16_t value)
 
 	HAL_FLASH_Lock();
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 }
 
 void EEPROM::Write32(uint16_t address, uint32_t value)
 {
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	HAL_FLASH_Unlock();
 
@@ -258,13 +280,17 @@ void EEPROM::Write32(uint16_t address, uint32_t value)
 
 	HAL_FLASH_Lock();
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 }
 
 uint8_t EEPROM::Read8(uint16_t address)
 {
 	uint8_t value = 0xFF;
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	uint16_t virtAddr = address / 2;
 	bool LSB = ((address % 2) == 0); // little endian format, so LSB byte is at address
@@ -277,7 +303,9 @@ uint8_t EEPROM::Read8(uint16_t address)
 			value = (tmp >> 8) & 0xFF;
 	}
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 
 	return value;
 }
@@ -285,7 +313,9 @@ uint8_t EEPROM::Read8(uint16_t address)
 uint16_t EEPROM::Read16(uint16_t address)
 {
 	uint16_t value = 0xFFFF;
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	bool aligned = ((address % 2) == 0);
 
@@ -304,7 +334,9 @@ uint16_t EEPROM::Read16(uint16_t address)
 				value = ((tmp1 >> 8) & 0xFF) | ((tmp2 & 0xFF) << 8);
 	}
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 
 	return value;
 }
@@ -312,7 +344,9 @@ uint16_t EEPROM::Read16(uint16_t address)
 uint32_t EEPROM::Read32(uint16_t address)
 {
 	uint32_t value = 0xFFFFFFFF;
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	bool aligned = ((address % 2) == 0);
 
@@ -334,7 +368,9 @@ uint32_t EEPROM::Read32(uint16_t address)
 					value = ((tmp1 >> 8) & 0xFF) | (((uint32_t)tmp2) << 8) | (((uint32_t)(tmp3 & 0xFF)) << 24);
 	}
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 
 	return value;
 }
@@ -345,7 +381,9 @@ EEPROM::errorCode_t EEPROM::WriteData(uint16_t address, uint8_t * data, uint16_t
 
 	if ((address % 2) != 0) return EEPROM_ERROR; // address not aligned - it has to be aligned for multi-writing
 
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	HAL_FLASH_Unlock();
 
@@ -360,7 +398,9 @@ EEPROM::errorCode_t EEPROM::WriteData(uint16_t address, uint8_t * data, uint16_t
 
 	HAL_FLASH_Lock();
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 
 	return status;
 }
@@ -371,7 +411,9 @@ EEPROM::errorCode_t EEPROM::ReadData(uint16_t address, uint8_t * data, uint16_t 
 
 	if ((address % 2) != 0) return EEPROM_ERROR; // address not aligned - it has to be aligned for multi-writing
 
+#ifdef USE_FREERTOS
 	xSemaphoreTake( resourceSemaphore_, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	uint16_t virtAddress = address / 2;
 	uint16_t idx = 0;
@@ -384,7 +426,9 @@ EEPROM::errorCode_t EEPROM::ReadData(uint16_t address, uint8_t * data, uint16_t 
 		idx += 2;
 	}
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( resourceSemaphore_ ); // give hardware resource back
+#endif
 
 	return status;
 }

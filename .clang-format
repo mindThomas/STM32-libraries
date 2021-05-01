@@ -1,0 +1,16 @@
+BasedOnStyle: Mozilla
+AccessModifierOffset: -4
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakAfterReturnType: None
+BinPackArguments: true
+BinPackParameters: true
+BreakConstructorInitializersBeforeComma: true
+Cpp11BracedListStyle: true
+ColumnLimit: 120
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+ConstructorInitializerIndentWidth: 4
+FixNamespaceComments: true
+IndentWidth: 4
+TabWidth: 4

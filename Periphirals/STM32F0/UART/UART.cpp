@@ -29,7 +29,7 @@
 UART * UART::objUART1 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void USART1_IRQHandler(void);
+extern "C" void USART1_IRQHandler(void);
 
 #ifdef USE_FREERTOS
 UART::UART(port_t port, uint32_t baud, uint32_t bufferLength) : BaudRate(baud), _port(port), _bufferLength(bufferLength), _bufferWriteIdx(0), _bufferReadIdx(0),

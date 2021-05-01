@@ -24,7 +24,7 @@
  
 WS2811 * WS2811::Handle = 0;
 
-extern "C" __EXPORT void DMA2_Stream2_IRQHandler(void);
+extern "C" void DMA2_Stream2_IRQHandler(void);
 
 WS2811::WS2811()
 {

@@ -15,12 +15,16 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef PERIPHIRALS_IO_H
-#define PERIPHIRALS_IO_H
 
-#include "stm32h7xx_hal.h"
-#include "cmsis_os.h" // for semaphore support
+#pragma once
+
+#include "stm32f4xx_hal.h"
+
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#endif
 
 class IO
 {
@@ -42,7 +46,9 @@ class IO
 		IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, pull_t pull); // configure as input
 		~IO();
 
+#ifdef USE_FREERTOS
 		void RegisterInterrupt(interrupt_trigger_t trigger, SemaphoreHandle_t semaphore);
+#endif
 		void RegisterInterrupt(interrupt_trigger_t trigger, void (*InterruptCallback)(void * params), void * callbackParams);
 		void DeregisterInterrupt();
 
@@ -62,7 +68,9 @@ class IO
 	public:
 		void (*_InterruptCallback)(void * params);
 		void * _InterruptCallbackParams;
+#ifdef USE_FREERTOS
 		SemaphoreHandle_t _InterruptSemaphore;
+#endif
 
 		static IO * interruptObjects[16]; // we only have 16 interrupt lines
 
@@ -80,6 +88,3 @@ class IO
 	public:
 		static void InterruptHandler(IO * io);
 };
-	
-	
-#endif

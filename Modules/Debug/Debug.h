@@ -28,9 +28,13 @@
 #include <cstring>
 #include <string>
 
-#ifdef USE_FREERTOS
+#ifdef USE_FREERTOS_CMSIS
 #include "cmsis_os.h" // for semaphore
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
 #endif
+
 #include "Priorities.h"
 
 #define DEBUG(msg)	Debug::Message("DEBUG: ", __PRETTY_FUNCTION__, msg)

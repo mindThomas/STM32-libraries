@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,11 +16,17 @@
  * ------------------------------------------
  */
  
-#ifndef PERIPHIRALS_UART_H
-#define PERIPHIRALS_UART_H
+#pragma once
 
 #include "stm32h7xx_hal.h"
-#include "cmsis_os.h" // for memory allocation (for the buffer) and callback
+
+// FreeRTOS for memory allocation (for the buffer) and callback
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
+#endif
 
 #define UART_CALLBACK_PARAMS (void * param, uint8_t * buffer, uint32_t bufLen)
 
@@ -48,8 +54,11 @@ class UART
 		void InitPeripheral();
 		void DeInitPeripheral();
 		void ConfigurePeripheral();
+
+#ifdef USE_FREERTOS
 		void RegisterRXcallback(void (*callback)UART_CALLBACK_PARAMS, void * parameter = (void*)0, uint32_t chunkLength = 0); // callback with chunks of available data
 		void DeregisterCallback();
+#endif
 
 		void Write(uint8_t byte);
 		uint32_t Write(uint8_t * buffer, uint32_t length);
@@ -57,7 +66,11 @@ class UART
 		int16_t Read();
 		bool Available();
 		uint32_t AvailableLength();
+#ifdef USE_FREERTOS
 		uint32_t WaitForNewData(uint32_t xTicksToWait = portMAX_DELAY);
+#else
+        void WaitForNewData();
+#endif
 		bool Connected();
 
 	private:
@@ -74,10 +87,15 @@ class UART
 		uint32_t _bufferWriteIdx;
 		uint32_t _bufferReadIdx;
 		uint32_t _callbackChunkLength;
+#ifdef USE_FREERTOS
 		TaskHandle_t _callbackTaskHandle;
 		SemaphoreHandle_t _resourceSemaphore;
 		SemaphoreHandle_t _transmitByteFinished;
 		SemaphoreHandle_t _RXdataAvailable;
+#else
+        bool _transmitByteFinished;
+        bool _RXdataAvailable;
+#endif
 		void (*_RXcallback)UART_CALLBACK_PARAMS;
 		void * _RXcallbackParameter;
 
@@ -86,7 +104,9 @@ class UART
 
 	private:
 		static void UART_IncomingDataInterrupt(UART * uart);
+#ifdef USE_FREERTOS
 		static void CallbackThread(void * pvParameters);
+#endif
 
 	private:
 		void BufferPush(uint8_t byte);
@@ -100,5 +120,3 @@ class UART
 		static UART * objUART4;
 		static UART * objUART7;
 };
-	
-#endif

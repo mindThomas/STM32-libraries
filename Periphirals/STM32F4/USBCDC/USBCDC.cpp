@@ -32,7 +32,7 @@ USBD_HandleTypeDef USBCDC::hUsbDeviceFS;
 PCD_HandleTypeDef USBCDC::hpcd_USB_OTG_FS;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void OTG_FS_IRQHandler(void);
+extern "C" void OTG_FS_IRQHandler(void);
 
 USBCDC::USBCDC(uint32_t transmitterTaskPriority, const char * productString, uint32_t PID, uint32_t VID) : _processingTaskHandle(0), _TXfinishedSemaphore(0), _RXdataAvailable(0), _TXqueue(0), _RXqueue(0), _connected(false)
 {

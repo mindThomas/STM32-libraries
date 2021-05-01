@@ -23,8 +23,8 @@
 #include <math.h> // for roundf
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void TIM1_UP_TIM16_IRQHandler(void);
-extern "C" __EXPORT void TIM1_CC_IRQHandler(void);
+extern "C" void TIM1_UP_TIM16_IRQHandler(void);
+extern "C" void TIM1_CC_IRQHandler(void);
  
 void SyncedPWMADC::ConfigureDigitalPins()
 {

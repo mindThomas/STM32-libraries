@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,30 +16,43 @@
  * ------------------------------------------
  */
  
-#include "IO.h"
-#include "stm32h7xx_hal.h"
+#include "IO.hpp"
+
 #include "Priorities.h"
-#include "Debug.h"
+
+#ifdef STM32H7_IO_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 IO * IO::interruptObjects[16] = {0};
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void EXTI0_IRQHandler(void);
-extern "C" __EXPORT void EXTI1_IRQHandler(void);
-extern "C" __EXPORT void EXTI2_IRQHandler(void);
-extern "C" __EXPORT void EXTI3_IRQHandler(void);
-extern "C" __EXPORT void EXTI4_IRQHandler(void);
-extern "C" __EXPORT void EXTI9_5_IRQHandler(void);
-extern "C" __EXPORT void EXTI15_10_IRQHandler(void);
+extern "C" void EXTI0_IRQHandler(void);
+extern "C" void EXTI1_IRQHandler(void);
+extern "C" void EXTI2_IRQHandler(void);
+extern "C" void EXTI3_IRQHandler(void);
+extern "C" void EXTI4_IRQHandler(void);
+extern "C" void EXTI9_5_IRQHandler(void);
+extern "C" void EXTI15_10_IRQHandler(void);
 
 // Configure as output
-IO::IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin) : _InterruptCallback(0), _InterruptCallbackParams(0), _InterruptSemaphore(0), _GPIO(GPIOx), _pin(GPIO_Pin), _isInput(false), _pull()
+IO::IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin) : _InterruptCallback(0), _InterruptCallbackParams(0), 
+    #ifdef USE_FREERTOS
+        _InterruptSemaphore(0),
+    #endif
+    _GPIO(GPIOx), _pin(GPIO_Pin), _isInput(false), _pull()
 {
 	ConfigurePin(GPIOx, GPIO_Pin, false, false, PULL_NONE);
 }
 
 // Configure as input
-IO::IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, pull_t pull) : _InterruptCallback(0), _InterruptCallbackParams(0), _InterruptSemaphore(0), _GPIO(GPIOx), _pin(GPIO_Pin), _isInput(true), _pull()
+IO::IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin, pull_t pull) : _InterruptCallback(0), _InterruptCallbackParams(0), 
+    #ifdef USE_FREERTOS
+        _InterruptSemaphore(0),
+    #endif
+    _GPIO(GPIOx), _pin(GPIO_Pin), _isInput(true), _pull()
 {
 	ConfigurePin(GPIOx, GPIO_Pin, true, false, pull);
 }
@@ -145,6 +158,7 @@ void IO::ChangeToOpenDrain(bool state)
 	Set(state);
 }
 
+#ifdef USE_FREERTOS
 void IO::RegisterInterrupt(interrupt_trigger_t trigger, SemaphoreHandle_t semaphore)
 {
 	if (!_GPIO || !_isInput) return;
@@ -152,6 +166,7 @@ void IO::RegisterInterrupt(interrupt_trigger_t trigger, SemaphoreHandle_t semaph
 	_InterruptSemaphore = semaphore;
 	ConfigureInterrupt(trigger);
 }
+#endif
 
 void IO::RegisterInterrupt(interrupt_trigger_t trigger, void (*InterruptCallback)(void * params), void * callbackParams)
 {
@@ -164,8 +179,12 @@ void IO::RegisterInterrupt(interrupt_trigger_t trigger, void (*InterruptCallback
 
 void IO::DeregisterInterrupt()
 {
-	if (!_GPIO || !_isInput || (!_InterruptSemaphore && !_InterruptCallback)) return; // no interrupt configured
-	_InterruptSemaphore = 0;
+#ifdef USE_FREERTOS
+    if (!_GPIO || !_isInput || (!_InterruptSemaphore && !_InterruptCallback)) return; // no interrupt configured
+    _InterruptSemaphore = 0;
+#else
+    if (!_GPIO || !_isInput || !_InterruptCallback) return; // no interrupt configured
+#endif
 	_InterruptCallback = 0;
 	_InterruptCallbackParams = 0;
 	DisableInterrupt();
@@ -274,21 +293,21 @@ void IO::Set(bool state)
 {
 	if (!_GPIO || _isInput) return;
 	if (state)
-		_GPIO->BSRRL = _pin;
+		_GPIO->BSRR = _pin;
 	else
-		_GPIO->BSRRH = _pin;
+		_GPIO->BSRR = _pin << 16;
 }
 
 void IO::High()
 {
 	if (!_GPIO || _isInput) return;
-	_GPIO->BSRRL = _pin;
+	_GPIO->BSRR = _pin;
 }
 
 void IO::Low()
 {
 	if (!_GPIO || _isInput) return;
-	_GPIO->BSRRH = _pin;
+	_GPIO->BSRR = _pin << 16;
 }
 
 void IO::Toggle()
@@ -310,12 +329,14 @@ void IO::InterruptHandler(IO * io)
 {
 	if (!io) return;
 
+#ifdef USE_FREERTOS
 	if (io->_InterruptSemaphore) {
 		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 		//xSemaphoreGiveFromISR( timer->callbackSemaphore, &xHigherPriorityTaskWoken );
 		xQueueSendFromISR(io->_InterruptSemaphore, NULL, &xHigherPriorityTaskWoken);
 		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 	}
+#endif
 
 	if (io->_InterruptCallback)
 		io->_InterruptCallback(io->_InterruptCallbackParams);

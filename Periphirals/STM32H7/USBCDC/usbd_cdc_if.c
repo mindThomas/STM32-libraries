@@ -49,7 +49,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
-#include "cmsis_os.h"
 
 /* USER CODE BEGIN INCLUDE */
 
@@ -94,6 +93,8 @@
 /* USER CODE BEGIN PRIVATE_DEFINES */
 /* Define size for the receive and transmit buffer over CDC */
 /* It's up to user to redefine and/or remove those define */
+// ToDo: Figure out if these are actually needed or if the USBD_CDC_SetTxBuffer
+//       and USBD_CDC_SetRxBuffer calls can just be removed?
 #define APP_RX_DATA_SIZE  2048
 #define APP_TX_DATA_SIZE  2048
 /* USER CODE END PRIVATE_DEFINES */
@@ -141,8 +142,10 @@ uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
   */
 
 static USBD_HandleTypeDef * hUsbDeviceFS;
+#ifdef USE_FREERTOS
 static QueueHandle_t ReceiveQueue = 0;
 static SemaphoreHandle_t ReceiveSemaphore = 0;
+#endif
 static USB_CDC_Package_t tmpPackage;
 static uint8_t Connected = 0;
 
@@ -193,6 +196,9 @@ static int8_t CDC_Init_FS(void)
   USBD_CDC_SetTxBuffer(hUsbDeviceFS, UserTxBufferFS, 0);
   USBD_CDC_SetRxBuffer(hUsbDeviceFS, UserRxBufferFS);
   Connected = 1;
+#ifndef USE_FREERTOS
+  //USB_TX_FinishedSemaphore = true;
+#endif
   return (USBD_OK);
   /* USER CODE END 3 */
 }
@@ -206,11 +212,15 @@ static int8_t CDC_DeInit_FS(void)
   /* USER CODE BEGIN 4 */
   Connected = 0;
 
+#ifdef USE_FREERTOS
   portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
   if (USB_TX_FinishedSemaphore)
 	  xSemaphoreGiveFromISR( USB_TX_FinishedSemaphore, &xHigherPriorityTaskWoken );
 
   portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#else
+    //USB_TX_FinishedSemaphore = true;
+#endif
 
   return (USBD_OK);
   /* USER CODE END 4 */
@@ -306,7 +316,9 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
+#ifdef USE_FREERTOS
   portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+#endif
   uint32_t remainingLength = *Len;
   uint16_t copyLength;
   uint8_t * copyPtr = Buf;
@@ -316,20 +328,26 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 	  if (copyLength > USB_PACKAGE_MAX_SIZE) copyLength = USB_PACKAGE_MAX_SIZE;
 	  memcpy(tmpPackage.data, copyPtr, copyLength);
 	  tmpPackage.length = copyLength;
+#ifdef USE_FREERTOS
 	  if (ReceiveQueue)
 		  xQueueSendFromISR(ReceiveQueue, (void *)&tmpPackage, &xHigherPriorityTaskWoken);
+#endif
 
 	  copyPtr += copyLength;
 	  remainingLength -= copyLength;
   }
 
+#ifdef USE_FREERTOS
   if (ReceiveSemaphore)
 	  xSemaphoreGiveFromISR( ReceiveSemaphore, &xHigherPriorityTaskWoken );
+#endif
 
   USBD_CDC_SetRxBuffer(hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(hUsbDeviceFS);
 
+#ifdef USE_FREERTOS
   portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#endif
 
   return (USBD_OK);
   /* USER CODE END 6 */
@@ -369,10 +387,14 @@ uint8_t CDC_Transmit_FS_ThreadBlocking(uint8_t* Buf, uint16_t Len)
 
   if (!Connected) return USBD_FAIL; // not ready
 
+#ifdef USE_FREERTOS
   if (USB_TX_FinishedSemaphore) {
 	  if( xSemaphoreTake( USB_TX_FinishedSemaphore, 100 ) != pdTRUE ) // wait max 20 ms on a TX, otherwise something is wrong
 		  return USBD_BUSY;
   }
+#else
+  while (!USB_TX_FinishedSemaphore);
+#endif
   USBD_CDC_SetTxBuffer(hUsbDeviceFS, Buf, Len);
   result = USBD_CDC_TransmitPacket(hUsbDeviceFS);
   /* USER CODE END 7 */
@@ -390,6 +412,7 @@ void CDC_RegisterUsbDeviceObject(USBD_HandleTypeDef * usbDevice)
 	hUsbDeviceFS = usbDevice;
 }
 
+#ifdef USE_FREERTOS
 void CDC_RegisterReceiveQueue(QueueHandle_t queue)
 {
 	ReceiveQueue = queue;
@@ -399,6 +422,7 @@ void CDC_RegisterRXsemaphore(SemaphoreHandle_t semaphore)
 {
 	ReceiveSemaphore = semaphore;
 }
+#endif
 
 uint8_t CDC_IsConnected(void)
 {

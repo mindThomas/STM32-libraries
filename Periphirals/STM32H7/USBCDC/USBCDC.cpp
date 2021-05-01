@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,25 +16,35 @@
  * ------------------------------------------
  */
  
-#include "USBCDC.h"
-#include "stm32h7xx_hal.h"
-#include "cmsis_os.h" // for USB processing task
-#include "Debug.h"
+#include "USBCDC.hpp"
 
-#include "usbd_conf.h"
-#include "usbd_core.h"
-#include "usbd_desc.h"
-#include "usbd_cdc.h"
-#include "usbd_cdc_if.h"
+#ifdef STM32H7_USBCDC_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
+
+#ifdef USE_FREERTOS_CMSIS
+#define delay(x) osDelay(x)
+#elif defined(USE_FREERTOS)
+#define delay(x) vTaskDelay(x)
+#else
+void HAL_Delay(uint32_t Delay); // forward declaration
+#define delay(x) HAL_Delay(x)
+#endif
 
 USBCDC * USBCDC::usbHandle = 0;
 USBD_HandleTypeDef USBCDC::hUsbDeviceFS;
 PCD_HandleTypeDef USBCDC::hpcd_USB_OTG_FS;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void OTG_FS_IRQHandler(void);
+extern "C" void OTG_FS_IRQHandler(void);
 
+#ifdef USE_FREERTOS
 USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TXfinishedSemaphore(0), _RXdataAvailable(0), _TXqueue(0), _RXqueue(0), _connected(false)
+#else
+USBCDC::USBCDC() : _connected(false)
+#endif
 {
 	if (usbHandle) {
 		ERROR("USB object already created");
@@ -44,6 +54,7 @@ USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TX
 	_tmpPackageForRead.length = 0;
 	_readIndex = 0;
 
+#ifdef USE_FREERTOS
 	_resourceSemaphore = xSemaphoreCreateBinary();
 	if (_resourceSemaphore == NULL) {
 		ERROR("Could not create USBCDC resource semaphore");
@@ -82,6 +93,7 @@ USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TX
 	}
 	vQueueAddToRegistry(_TXfinishedSemaphore, "USB TX Finished");
 	USBD_CDC_SetTXfinishedSemaphore(_TXfinishedSemaphore);
+#endif
 
 	/* Init USB Device Library, add supported class and start the library. */
 	USBD_LL_SetPCD(&USBCDC::hpcd_USB_OTG_FS);
@@ -93,13 +105,16 @@ USBCDC::USBCDC(uint32_t transmitterTaskPriority) : _processingTaskHandle(0), _TX
 
 	HAL_PWREx_EnableUSBVoltageDetector();
 
+#ifdef USE_FREERTOS
 	xTaskCreate(USBCDC::TransmitterThread, (char *)"USB transmitter", USBCDC_TX_PROCESSING_THREAD_STACK_SIZE, (void*) this, transmitterTaskPriority, &_processingTaskHandle);
+#endif
 
 	usbHandle = this;
 }
 
 USBCDC::~USBCDC()
 {
+#ifdef USE_FREERTOS
 	if (_processingTaskHandle)
 		vTaskDelete(_processingTaskHandle); // stop task
 
@@ -132,11 +147,13 @@ USBCDC::~USBCDC()
 		vQueueUnregisterQueue(_RXqueue);
 		vQueueDelete(_RXqueue);
 	}
+#endif
 
 	USBD_Stop(&USBCDC::hUsbDeviceFS);
 	usbHandle = NULL;
 }
 
+#ifdef USE_FREERTOS
 bool USBCDC::GetPackage(USB_CDC_Package_t * packageBuffer)
 {
 	if (!packageBuffer) return false;
@@ -146,7 +163,9 @@ bool USBCDC::GetPackage(USB_CDC_Package_t * packageBuffer)
 	else
 		return false;
 }
+#endif
 
+#ifdef USE_FREERTOS
 void USBCDC::Write(uint8_t byte)
 {
 	USB_CDC_Package_t package;
@@ -187,25 +206,33 @@ uint32_t USBCDC::Write(uint8_t * buffer, uint32_t length)
 
 	return length;
 }
+#endif
 
 uint32_t USBCDC::WriteBlocking(uint8_t * buffer, uint32_t length)
 {
 	if (!_connected) return 0;
 
+#ifdef USE_FREERTOS
 	xSemaphoreTake( _resourceSemaphore, ( TickType_t ) portMAX_DELAY); // take hardware resource
+#endif
 
 	if (CDC_IsConnected()) {
 		if (CDC_Transmit_FS_ThreadBlocking(buffer, length) != USBD_OK) {
+#ifdef USE_FREERTOS
 			xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
+#endif
 			return 0; // error, could not transmit package
 		}
 	}
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
+#endif
 
 	return length;
 }
 
+#ifdef USE_FREERTOS
 int16_t USBCDC::Read()
 {
 	uint8_t returnValue;
@@ -226,6 +253,7 @@ int16_t USBCDC::Read()
 
 bool USBCDC::Available()
 {
+
 	if (_readIndex != _tmpPackageForRead.length || uxQueueMessagesWaiting(_RXqueue) > 0)
 		return true;
 	else
@@ -236,12 +264,14 @@ uint32_t USBCDC::WaitForNewData(uint32_t xTicksToWait) // blocking call
 {
 	return xSemaphoreTake( _RXdataAvailable, ( TickType_t ) xTicksToWait );
 }
+#endif
 
 bool USBCDC::Connected()
 {
 	return _connected;
 }
 
+#ifdef USE_FREERTOS
 void USBCDC::TransmitterThread(void * pvParameters)
 {
 	USB_CDC_Package_t package;
@@ -255,7 +285,7 @@ void USBCDC::TransmitterThread(void * pvParameters)
 
 		while (!CDC_IsConnected()) {
 			xQueueReset(usb->_TXqueue);
-			osDelay(1);
+			delay(1);
 		}
 
 		// Wait for the USB connection to be ready
@@ -263,7 +293,7 @@ void USBCDC::TransmitterThread(void * pvParameters)
 		memset(package.data, 0, USB_PACKAGE_MAX_SIZE);
 		while (CDC_Transmit_FS(package.data, USB_PACKAGE_MAX_SIZE) != USBD_OK) {
 			xQueueReset(usb->_TXqueue);
-			osDelay(1);
+			delay(1);
 		}
 
 		xSemaphoreGive( usb->_resourceSemaphore ); // give hardware resource back
@@ -284,6 +314,7 @@ void USBCDC::TransmitterThread(void * pvParameters)
 		}
 	}
 }
+#endif
 
 void OTG_FS_IRQHandler(void)
 {

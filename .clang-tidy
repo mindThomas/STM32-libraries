@@ -1,0 +1,13 @@
+Checks:           '-*,boost-*,bugprone-*,clang-analyzer-*,cppcoreguidelines-*,misc-*,modernize-*,performance-*,readability-*,
+                     -cppcoreguidelines-owning-memory,
+                     -cppcoreguidelines-pro-type-union-access'
+WarningsAsErrors: '*'
+CheckOptions:
+  - key: readability-function-size.LineThreshold
+    value: 100
+  - key: readability-function-size.ParameterThreshold
+    value: 7
+  - key: readability-function-size.BranchThreshold
+    value: 8
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 1

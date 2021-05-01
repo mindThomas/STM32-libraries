@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,11 +16,17 @@
  * ------------------------------------------
  */
  
-#ifndef PERIPHIRALS_SPI_H
-#define PERIPHIRALS_SPI_H
+#pragma once
 
 #include "stm32h7xx_hal.h"
-#include "cmsis_os.h" // for memory allocation (for the buffer) and callback
+
+// FreeRTOS for memory allocation (for the buffer) and callback
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
+#endif
 
 class SPI
 {
@@ -64,8 +70,12 @@ class SPI
 		typedef struct hardware_resource_t {
 			port_t port;
 			uint32_t frequency;
+#ifdef USE_FREERTOS
 			SemaphoreHandle_t resourceSemaphore;
 			SemaphoreHandle_t transmissionFinished;
+#else
+            bool transmissionFinished;
+#endif
 			bool configured;
 			uint8_t instances; // how many objects are using this hardware resource
 			SPI_HandleTypeDef handle;
@@ -81,6 +91,3 @@ class SPI
 		uint32_t _csPin;
 		bool _ongoingTransaction;
 };
-	
-	
-#endif

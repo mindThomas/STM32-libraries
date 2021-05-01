@@ -26,8 +26,8 @@ ADC::hardware_resource_t * ADC::resADC1 = 0;
 float ADC::ADC_REF_CORR = 1.0f;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void ADC1_COMP_IRQHandler(void);
-extern "C" __EXPORT void DMA1_Channel1_IRQHandler(void);
+extern "C" void ADC1_COMP_IRQHandler(void);
+extern "C" void DMA1_Channel1_IRQHandler(void);
 
 ADC::ADC(adc_t adc, adc_channel_t channel, uint32_t circularBufferSize, TIM_TypeDef * triggerTimer) : _channel(channel), _buffer(circularBufferSize)
 {

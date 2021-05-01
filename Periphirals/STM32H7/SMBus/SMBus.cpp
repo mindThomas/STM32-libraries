@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,24 +16,31 @@
  * ------------------------------------------
  */
  
-#include "SMBus.h"
-#include "stm32h7xx_hal.h"
+#include "SMBus.hpp"
+
 #include "Priorities.h"
-#include "Debug.h"
 #include <math.h>
 #include <string.h> // for memset
+#include <stdlib.h>
+
+#ifdef STM32H7_SMBUS_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#define DEBUG(msg) // not implemented
+#endif
 
 SMBus::hardware_resource_t * SMBus::resI2C2 = 0;
 SMBus::hardware_resource_t * SMBus::resI2C4 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void I2C2_EV_IRQHandler(void);
-extern "C" __EXPORT void I2C2_ER_IRQHandler(void);
-extern "C" __EXPORT void I2C4_EV_IRQHandler(void);
-extern "C" __EXPORT void I2C4_ER_IRQHandler(void);
-extern "C" __EXPORT void HAL_SMBUS_MasterTxCpltCallback(SMBUS_HandleTypeDef *hsmbus);
-extern "C" __EXPORT void HAL_SMBUS_MasterRxCpltCallback(SMBUS_HandleTypeDef *hsmbus);
-extern "C" __EXPORT void HAL_SMBUS_ErrorCallback(SMBUS_HandleTypeDef *hsmbus);
+extern "C" void I2C2_EV_IRQHandler(void);
+extern "C" void I2C2_ER_IRQHandler(void);
+extern "C" void I2C4_EV_IRQHandler(void);
+extern "C" void I2C4_ER_IRQHandler(void);
+extern "C" void HAL_SMBUS_MasterTxCpltCallback(SMBUS_HandleTypeDef *hsmbus);
+extern "C" void HAL_SMBUS_MasterRxCpltCallback(SMBUS_HandleTypeDef *hsmbus);
+extern "C" void HAL_SMBUS_ErrorCallback(SMBUS_HandleTypeDef *hsmbus);
 
 SMBus::SMBus(port_t port, uint8_t devAddr, uint32_t frequency)
 {
@@ -141,6 +148,8 @@ void SMBus::InitPeripheral(port_t port, uint32_t frequency)
 		_hRes->frequency = frequency;
 		_hRes->configured = false;
 		_hRes->instances = 0;
+
+#ifdef USE_FREERTOS
 		_hRes->resourceSemaphore = xSemaphoreCreateBinary();
 		if (_hRes->resourceSemaphore == NULL) {
 			_hRes = 0;
@@ -159,6 +168,7 @@ void SMBus::InitPeripheral(port_t port, uint32_t frequency)
 		vQueueAddToRegistry(_hRes->transmissionFinished, "SMBus Finish");
 		xSemaphoreGive( _hRes->transmissionFinished ); // ensure that the semaphore is not taken from the beginning
 		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY ); // ensure that the semaphore is not taken from the beginning
+#endif
 
 		// Configure pins for I2C and I2C peripheral accordingly
 		if (port == PORT_I2C2) {
@@ -290,12 +300,20 @@ void SMBus::Write(uint8_t reg, uint8_t value)
 void SMBus::Write(uint8_t reg, uint8_t * buffer, uint8_t writeLength)
 {
 	if (!_hRes) return;
+#ifdef USE_FREERTOS
 	xSemaphoreTake( _hRes->resourceSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
 
 	if (uxSemaphoreGetCount(_hRes->transmissionFinished)) // semaphore is available to be taken - which it should not be at this state before starting the transmission, since we use the semaphore for flagging the finish transmission event
 		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY ); // something incorrect happened, as the transmissionFinished semaphore should always be taken before a transmission starts
+#else
+    _hRes->transmissionFinished = false;
+#endif
 
+#ifdef USE_FREERTOS
 	uint8_t * txBuffer = (uint8_t *)pvPortMalloc(writeLength+1);
+#else
+    uint8_t * txBuffer = (uint8_t *)malloc(writeLength+1);
+#endif
 
 	if (!txBuffer) return;
 
@@ -307,16 +325,26 @@ void SMBus::Write(uint8_t reg, uint8_t * buffer, uint8_t writeLength)
 	if (HAL_SMBUS_Master_Transmit_IT(&_hRes->handle, (uint16_t)_devAddr, buffer, writeLength, XferOptions) == HAL_OK)
 	{
 		// Wait for the transmission to finish
+        #ifdef USE_FREERTOS
 		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY );
+        #else
+        while (!_hRes->transmissionFinished);
+        #endif
 	} else {
 		DEBUG("Failed SMBus transmission");
 	}
 
 	//uint32_t errCode = HAL_SMBUS_GetError(&_hRes->handle);
 
+#ifdef USE_FREERTOS
 	vPortFree(txBuffer);
+#else
+    free(txBuffer);
+#endif
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( _hRes->resourceSemaphore ); // give hardware resource back
+#endif
 }
 
 uint8_t SMBus::Read(uint8_t reg)
@@ -329,10 +357,14 @@ uint8_t SMBus::Read(uint8_t reg)
 void SMBus::Read(uint8_t reg, uint8_t * buffer, uint8_t readLength)
 {
 	if (!_hRes) return;
+#ifdef USE_FREERTOS
 	xSemaphoreTake( _hRes->resourceSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
 
 	if (uxSemaphoreGetCount(_hRes->transmissionFinished)) // semaphore is available to be taken - which it should not be at this state before starting the transmission, since we use the semaphore for flagging the finish transmission event
 		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY ); // something incorrect happened, as the transmissionFinished semaphore should always be taken before a transmission starts
+#else
+    _hRes->transmissionFinished = false;
+#endif
 
 	uint32_t XferOptions = SMBUS_OTHER_FRAME_NO_PEC;
 
@@ -340,7 +372,11 @@ void SMBus::Read(uint8_t reg, uint8_t * buffer, uint8_t readLength)
 	if (HAL_SMBUS_Master_Transmit_IT(&_hRes->handle, (uint16_t)_devAddr, &reg, 1, XferOptions) == HAL_OK)
 	{
 		// Wait for the transmission to finish
+#ifdef USE_FREERTOS
 		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY );
+#else
+        while (!_hRes->transmissionFinished);
+#endif
 	} else {
 		DEBUG("Failed SMBus transmission");
 	}
@@ -351,14 +387,20 @@ void SMBus::Read(uint8_t reg, uint8_t * buffer, uint8_t readLength)
 	if (HAL_SMBUS_Master_Receive_IT(&_hRes->handle, (uint16_t)_devAddr, buffer, readLength, XferOptions) == HAL_OK)
 	{
 		// Wait for the transmission to finish
+#ifdef USE_FREERTOS
 		xSemaphoreTake( _hRes->transmissionFinished, ( TickType_t ) portMAX_DELAY );
+#else
+        while (!_hRes->transmissionFinished);
+#endif
 	} else {
 		DEBUG("Failed SMBus transmission");
 	}
 
 	//uint32_t errCode2 = HAL_SMBUS_GetError(&_hRes->handle);
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( _hRes->resourceSemaphore ); // give hardware resource back
+#endif
 }
 
 void I2C2_EV_IRQHandler(void)
@@ -394,9 +436,11 @@ void SMBus::TransmissionCompleteCallback(SMBUS_HandleTypeDef *hsmbus)
 	else
 		return;
 
+#ifdef USE_FREERTOS
 	portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 	xSemaphoreGiveFromISR( smbus->transmissionFinished, &xHigherPriorityTaskWoken );
 	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#endif
 }
 
 void HAL_SMBUS_MasterTxCpltCallback(SMBUS_HandleTypeDef *hsmbus)

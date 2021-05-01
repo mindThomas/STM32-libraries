@@ -27,9 +27,9 @@
 CANBus::hardware_resource_t * CANBus::resCAN = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void FDCAN1_IT0_IRQHandler(void);
-extern "C" __EXPORT void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
-extern "C" __EXPORT void HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t BufferIndexes);
+extern "C" void FDCAN1_IT0_IRQHandler(void);
+extern "C" void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
+extern "C" void HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t BufferIndexes);
 
 CANBus::CANBus()
 {

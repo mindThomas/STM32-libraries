@@ -55,7 +55,7 @@
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "usbd_def.h"
+#include "STM32_USB_Device_Library/Core/Inc/usbd_def.h"
 
 /* USER CODE BEGIN INCLUDE */
 

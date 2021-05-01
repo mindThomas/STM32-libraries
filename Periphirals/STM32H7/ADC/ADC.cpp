@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,10 +16,15 @@
  * ------------------------------------------
  */
  
-#include "ADC.h"
-#include "stm32h7xx_hal.h"
-#include "Debug.h"
+#include "ADC.hpp"
+
 #include <string.h> // for memset
+
+#ifdef STM32H7_ADC_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 ADC::hardware_resource_t * ADC::resADC1 = 0;
 ADC::hardware_resource_t * ADC::resADC2 = 0;
@@ -27,11 +32,11 @@ ADC::hardware_resource_t * ADC::resADC3 = 0;
 float ADC::ADC_REF_CORR = 1.0f;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc);
-extern "C" __EXPORT void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
-extern "C" __EXPORT void DMA1_Stream0_IRQHandler(void);
-extern "C" __EXPORT void DMA1_Stream1_IRQHandler(void);
-extern "C" __EXPORT void DMA1_Stream2_IRQHandler(void);
+extern "C" void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc);
+extern "C" void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc);
+extern "C" void DMA1_Stream0_IRQHandler(void);
+extern "C" void DMA1_Stream1_IRQHandler(void);
+extern "C" void DMA1_Stream2_IRQHandler(void);
 
 ADC::ADC(adc_t adc, uint32_t channel, uint32_t resolution) : _channel(channel)
 {
@@ -57,36 +62,6 @@ ADC::~ADC()
 	}
 
 	ERROR("Deinit (destruction) of ADC with DMA enabled has not been implemented yet!");
-	return;
-
-	// Missing deinit of GPIO, eg. HAL_GPIO_DeInit(GPIOF, GPIO_PIN_3)
-
-	if (_hRes->numberOfConfiguredChannels == 0) { // no more channels in use in resource, so delete the resource
-		// Delete hardware resource
-		timer_t tmpADC = _hRes->adc;
-		delete(_hRes);
-
-		switch (tmpADC)
-		{
-			case ADC_1:
-				if (!resADC2)
-					__HAL_RCC_ADC12_CLK_DISABLE();
-				resADC1 = 0;
-				break;
-			case ADC_2:
-				if (!resADC1)
-					__HAL_RCC_ADC12_CLK_DISABLE();
-				resADC2 = 0;
-				break;
-			case ADC_3:
-				__HAL_RCC_ADC3_CLK_DISABLE();
-				resADC3 = 0;
-				break;
-			default:
-				ERROR("Undefined ADC");
-				return;
-		}
-	}
 }
 
 void ADC::InitPeripheral(adc_t adc, uint32_t resolution)
@@ -250,7 +225,6 @@ void ADC::ConfigureADCPeripheral()
 	_hRes->handle.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DR; /* Regular Conversion data stored in DR register only */
 	_hRes->handle.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN; /* DR register is overwritten with the last conversion result in case of overrun */
 	_hRes->handle.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;
-	_hRes->handle.Init.BoostMode = DISABLE; /* Boost mode can be disabled (to save power) since ADC clock frequency is less than or equal to 20 MHz */
 	_hRes->handle.Init.OversamplingMode = DISABLE;
 #endif
 
@@ -272,7 +246,6 @@ void ADC::ConfigureADCPeripheral()
 	_hRes->handle.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR; /* ADC DMA circular requested */
 	_hRes->handle.Init.Overrun                  = ADC_OVR_DATA_OVERWRITTEN;      /* DR register is overwritten with the last conversion result in case of overrun */
 	_hRes->handle.Init.OversamplingMode         = DISABLE;                       /* No oversampling */
-	_hRes->handle.Init.BoostMode                = ENABLE;                        /* Enable Boost mode as ADC clock frequency is bigger than 20 MHz */
 
 	ConfigureDMA();
 

@@ -34,8 +34,17 @@
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include  "usbd_ioreq.h"
-#include "cmsis_os.h" // for TX finished semaphore
+#include "../../../Core/Inc/usbd_ioreq.h"
+#include <stdbool.h>
+
+// FreeRTOS for TX finished semaphore
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "queue.h"
+#endif
 
 /** @addtogroup STM32_USB_DEVICE_LIBRARY
   * @{
@@ -81,9 +90,13 @@
 
 /**
   * @}
-  */ 
+  */
 
+#ifdef USE_FREERTOS
 extern SemaphoreHandle_t USB_TX_FinishedSemaphore;
+#else
+extern bool USB_TX_FinishedSemaphore;
+#endif
 
 /** @defgroup USBD_CORE_Exported_TypesDefinitions
   * @{
@@ -146,7 +159,9 @@ extern USBD_ClassTypeDef  USBD_CDC;
   */ 
 
 void USBD_CDC_AllocateMemory(USBD_HandleTypeDef *pdev);
+#ifdef USE_FREERTOS
 void USBD_CDC_SetTXfinishedSemaphore(SemaphoreHandle_t semaphore);
+#endif
 
 /** @defgroup USB_CORE_Exported_Functions
   * @{

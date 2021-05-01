@@ -26,7 +26,7 @@
 I2C::hardware_resource_t * I2C::resI2C1 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void I2C1_IRQHandler(void);
+extern "C" void I2C1_IRQHandler(void);
 
 I2C::I2C(port_t port, uint8_t devAddr, uint32_t frequency)
 {

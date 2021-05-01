@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,12 +16,17 @@
  * ------------------------------------------
  */
  
-#include "Timer.h"
-#include "stm32h7xx_hal.h"
+#include "Timer.hpp"
+
 #include "Priorities.h"
-#include "Debug.h"
 #include <string.h> // for memset
 #include <cmath>
+
+#ifdef STM32H7_TIMER_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 Timer::hardware_resource_t * Timer::resTIMER6 = 0;
 Timer::hardware_resource_t * Timer::resTIMER7 = 0;
@@ -29,12 +34,15 @@ Timer::hardware_resource_t * Timer::resTIMER12 = 0;
 Timer::hardware_resource_t * Timer::resTIMER13 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void TIM6_DAC_IRQHandler(void);
-extern "C" __EXPORT void TIM7_IRQHandler(void);
-extern "C" __EXPORT void TIM8_BRK_TIM12_IRQHandler(void);
-extern "C" __EXPORT void TIM8_UP_TIM13_IRQHandler(void);
+extern "C" void TIM6_DAC_IRQHandler(void);
+extern "C" void TIM7_IRQHandler(void);
+extern "C" void TIM8_BRK_TIM12_IRQHandler(void);
+extern "C" void TIM8_UP_TIM13_IRQHandler(void);
 
-Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSemaphore(0)
+Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0)
+#ifdef USE_FREERTOS
+    , _waitSemaphore(0)
+#endif
 {
 	if (timer == TIMER6 && !resTIMER6) {
 		resTIMER6 = new Timer::hardware_resource_t;
@@ -66,8 +74,10 @@ Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSe
 	_hRes->frequency = frequency;
 	_hRes->maxValue = TIMER_DEFAULT_MAXVALUE;
 	_hRes->TimerCallback = 0;
+#ifdef USE_FREERTOS
 	_hRes->callbackTaskHandle = 0;
 	_hRes->callbackSemaphore = 0;
+#endif
 
 	ConfigureTimerPeripheral();
 }
@@ -215,8 +225,11 @@ float Timer::GetTime()
 
 void Timer::Reset()
 {
+#ifdef USE_FREERTOS
 	if (_hRes->callbackSemaphore)
 		xQueueReset(_hRes->callbackSemaphore);
+#endif
+
 	__HAL_TIM_SET_COUNTER(&_hRes->handle, 0);
 	_hRes->counterOffset = 0;
 }
@@ -225,22 +238,30 @@ void Timer::Wait(uint32_t MicrosToWait)
 {
 	if (!_hRes) return;
 
+#ifdef USE_FREERTOS
 	if (_hRes->TimerCallback || _TimerCallbackSoft || _hRes->callbackSemaphore != _waitSemaphore) {
+#else
+    if (_hRes->TimerCallback || _TimerCallbackSoft) {
+#endif
 		ERROR("Timer interrupt already registered elsewhere");
 		return;
 	}
 
+#ifdef USE_FREERTOS
 	if (!_waitSemaphore) {
 		_waitSemaphore = xSemaphoreCreateBinary();
 		_hRes->callbackSemaphore = _waitSemaphore;
 	}
+#endif
 
 	float MicrosTimerCountPeriod = 1000000.0f / _hRes->frequency;
 	uint16_t CountsToWait = ceilf((float)MicrosToWait / MicrosTimerCountPeriod) - 1;
 	Reset();
 	SetMaxValue(CountsToWait);
 
+#ifdef USE_FREERTOS
 	xSemaphoreTake( _waitSemaphore, ( TickType_t ) portMAX_DELAY );
+#endif
 }
 
 /**
@@ -265,6 +286,7 @@ float Timer::GetDeltaTime(uint32_t prevTimerValue)
 	return microsTime;
 }
 
+#ifdef USE_FREERTOS
 void Timer::RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)()) // note that the frequency should be a multiple of the configured timer count frequency
 {
 	if (!_hRes) return;
@@ -275,6 +297,7 @@ void Timer::RegisterInterruptSoft(uint32_t frequency, void (*TimerCallbackSoft)(
 	_TimerCallbackSoft = TimerCallbackSoft;
 	xTaskCreate(Timer::CallbackThread, (char *)"Timer callback", 128, (void*) this, 3, &_hRes->callbackTaskHandle);
 }
+#endif
 
 void Timer::RegisterInterrupt(uint32_t frequency, void (*TimerCallback)()) // note that the frequency should be a multiple of the configured timer count frequency
 {
@@ -286,6 +309,7 @@ void Timer::RegisterInterrupt(uint32_t frequency, void (*TimerCallback)()) // no
 	_hRes->TimerCallback = TimerCallback;
 }
 
+#ifdef USE_FREERTOS
 void Timer::RegisterInterrupt(uint32_t frequency, SemaphoreHandle_t semaphore)
 {
 	if (!_hRes) return;
@@ -308,6 +332,7 @@ void Timer::CallbackThread(void * pvParameters)
 			timer->_TimerCallbackSoft();
 	}
 }
+#endif
 
 void Timer::InterruptHandler(Timer::hardware_resource_t * timer)
 {
@@ -320,20 +345,24 @@ void Timer::InterruptHandler(Timer::hardware_resource_t * timer)
 
 			timer->counterOffset += (timer->maxValue + 1);
 
+#ifdef USE_FREERTOS
 			if (timer->callbackSemaphore) {
 				portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 				//xSemaphoreGiveFromISR( timer->callbackSemaphore, &xHigherPriorityTaskWoken );
 				xQueueSendFromISR(timer->callbackSemaphore, NULL, &xHigherPriorityTaskWoken);
 				portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 			}
+#endif
 
 			if (timer->TimerCallback)
 				timer->TimerCallback();
 
+#ifdef USE_FREERTOS
 			if (timer->callbackTaskHandle) {
 				portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(timer->callbackTaskHandle);
 				portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 			}
+#endif
 		}
 	}
 }

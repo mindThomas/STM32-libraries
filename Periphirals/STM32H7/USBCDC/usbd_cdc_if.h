@@ -56,8 +56,16 @@
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "usbd_cdc.h"
-#include "cmsis_os.h" // for queue and semaphore
+#include "STM32_USB_Device_Library/Class/CDC/Inc/usbd_cdc.h"
+
+// FreeRTOS for queue and semaphore
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "queue.h"
+#endif
 
 /* USER CODE BEGIN INCLUDE */
 
@@ -141,8 +149,12 @@ uint8_t CDC_Transmit_FS_ThreadBlocking(uint8_t* Buf, uint16_t Len);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
 void CDC_RegisterUsbDeviceObject(USBD_HandleTypeDef * usbDevice);
+#ifdef USE_FREERTOS
 void CDC_RegisterReceiveQueue(QueueHandle_t queue);
 void CDC_RegisterRXsemaphore(SemaphoreHandle_t semaphore);
+#else
+void CDC_RegisterRXsemaphore(bool * semaphore);
+#endif
 uint8_t CDC_IsConnected(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 

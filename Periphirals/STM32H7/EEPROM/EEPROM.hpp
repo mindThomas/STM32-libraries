@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,12 +16,18 @@
  * ------------------------------------------
  */
  
-#ifndef PERIPHIRALS_EEPROM_H
-#define PERIPHIRALS_EEPROM_H
+#pragma once
 
 #include "stm32h7xx_hal.h"
-#include "cmsis_os.h" // for semaphore support
 #include <string.h> // for memcpy
+
+// FreeRTOS for semaphore support
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
+#endif
 
 /* EEPROM Flash locations */
 #define FLASH_BASE_ADDR      (uint32_t)(FLASH_BASE)
@@ -158,7 +164,9 @@ class EEPROM
 		uint32_t CalculateSectionsTableChecksum(void);
 
 	private:
+#ifdef USE_FREERTOS
 		SemaphoreHandle_t resourceSemaphore_;
+#endif
 		std::vector<uint16_t> * virtAddrTable_;
 
 		uint16_t DataVar = 0;
@@ -174,7 +182,5 @@ class EEPROM
 				uint32_t sectionsChecksum;
 			} internal_state_t;
 };
-	
-#endif
 	
 #endif

@@ -31,12 +31,12 @@ Timer::hardware_resource_t * Timer::resTIMER14 = 0;
 Timer::hardware_resource_t * Timer::resTIMER17 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-//extern "C" __EXPORT void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
-//extern "C" __EXPORT void TIM2_IRQHandler(void);
-//extern "C" __EXPORT void TIM3_IRQHandler(void);
-extern "C" __EXPORT void TIM14_IRQHandler(void);
-//extern "C" __EXPORT void TIM16_IRQHandler(void);
-extern "C" __EXPORT void TIM17_IRQHandler(void);
+//extern "C" void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
+//extern "C" void TIM2_IRQHandler(void);
+//extern "C" void TIM3_IRQHandler(void);
+extern "C" void TIM14_IRQHandler(void);
+//extern "C" void TIM16_IRQHandler(void);
+extern "C" void TIM17_IRQHandler(void);
 
 #ifdef USE_FREERTOS
 Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSemaphore(0)

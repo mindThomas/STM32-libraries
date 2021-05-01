@@ -59,12 +59,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "main.h"
+
 #include "stm32h7xx.h"
 #include "stm32h7xx_hal.h"
 
 /* USER CODE BEGIN INCLUDE */
-#include "cmsis_os.h" // for malloc etc.
+// FreeRTOS for malloc etc.
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "queue.h"
+#endif
 /* USER CODE END INCLUDE */
 
 /** @addtogroup USBD_OTG_DRIVER

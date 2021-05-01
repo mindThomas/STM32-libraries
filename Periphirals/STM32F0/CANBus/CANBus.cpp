@@ -27,11 +27,11 @@
 CANBus::hardware_resource_t * CANBus::resCAN = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void CEC_CAN_IRQHandler(void);
-extern "C" __EXPORT void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
-extern "C" __EXPORT void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan);
-extern "C" __EXPORT void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan);
-extern "C" __EXPORT void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan);
+extern "C" void CEC_CAN_IRQHandler(void);
+extern "C" void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
+extern "C" void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan);
+extern "C" void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan);
+extern "C" void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan);
 
 CANBus::CANBus()
 {

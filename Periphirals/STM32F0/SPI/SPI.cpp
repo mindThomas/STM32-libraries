@@ -26,7 +26,7 @@
 SPI::hardware_resource_t * SPI::resSPI2 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void SPI2_IRQHandler(void);
+extern "C" void SPI2_IRQHandler(void);
 
 SPI::SPI(port_t port, uint32_t frequency, GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin) : _csPort(GPIOx), _csPin(GPIO_Pin)
 {

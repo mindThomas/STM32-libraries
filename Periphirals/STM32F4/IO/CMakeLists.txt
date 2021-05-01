@@ -1,0 +1,17 @@
+set(LIBRARY_NAME           STM32F4_IO
+)
+set(LIBRARY_DEPENDENCIES   HAL::STM32::F4::RCC
+                           HAL::STM32::F4::GPIO
+                           HAL::STM32::F4::CORTEX
+                           CMSIS::STM32::F4                        
+)
+set(LIBRARY_SOURCES        IO.cpp
+)
+
+message("       -- ${LIBRARY_NAME}")
+
+add_library(${LIBRARY_NAME} INTERFACE)
+target_sources(${LIBRARY_NAME} INTERFACE ${LIBRARY_SOURCES})
+target_link_libraries(${LIBRARY_NAME} INTERFACE ${LIBRARY_DEPENDENCIES})
+get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})

@@ -539,7 +539,9 @@ static uint8_t  USBD_CDC_Init (USBD_HandleTypeDef *pdev,
   if (!HandleUsed) {
 	  pdev->pClassData = &USBD_CDC_Handle;
 	  HandleUsed = 1;
+#ifndef USE_FREERTOS
 	  USB_TX_FinishedSemaphore = true;
+#endif
   }
   else {
 	  pdev->pClassData = NULL; // static handle is already in use

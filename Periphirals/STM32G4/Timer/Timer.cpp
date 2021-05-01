@@ -29,10 +29,10 @@ Timer::hardware_resource_t * Timer::resTIMER8 = 0;
 Timer::hardware_resource_t * Timer::resTIMER17 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void TIM6_DAC_IRQHandler(void);
-extern "C" __EXPORT void TIM7_IRQHandler(void);
-extern "C" __EXPORT void TIM8_UP_IRQHandler(void);
-extern "C" __EXPORT void TIM1_TRG_COM_TIM17_IRQHandler(void);
+extern "C" void TIM6_DAC_IRQHandler(void);
+extern "C" void TIM7_IRQHandler(void);
+extern "C" void TIM8_UP_IRQHandler(void);
+extern "C" void TIM1_TRG_COM_TIM17_IRQHandler(void);
 
 Timer::Timer(timer_t timer, uint32_t frequency) : _TimerCallbackSoft(0), _waitSemaphore(0)
 {

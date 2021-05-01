@@ -23,9 +23,9 @@
 IO * IO::interruptObjects[16] = {0};
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void EXTI0_1_IRQHandler(void);
-extern "C" __EXPORT void EXTI2_3_IRQHandler(void);
-extern "C" __EXPORT void EXTI4_15_IRQHandler(void);
+extern "C" void EXTI0_1_IRQHandler(void);
+extern "C" void EXTI2_3_IRQHandler(void);
+extern "C" void EXTI4_15_IRQHandler(void);
 
 // Configure as output
 IO::IO(GPIO_TypeDef * GPIOx, uint32_t GPIO_Pin) : _InterruptCallback(0), _InterruptCallbackParams(0),

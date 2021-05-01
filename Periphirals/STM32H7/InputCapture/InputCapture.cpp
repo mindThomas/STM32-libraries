@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -18,7 +18,7 @@
  
 /* Use input capture to measure time between rising and/or falling edges of an input */
  
-#include "InputCapture.h"
+#include "InputCapture.hpp"
  
 InputCapture::InputCapture()
 {

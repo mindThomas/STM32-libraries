@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,26 +16,41 @@
  * ------------------------------------------
  */
  
-#include "UART.h"
-#include "stm32h7xx_hal.h"
+#include "UART.hpp"
+
 #include "Priorities.h"
-#include "Debug.h"
+#include <stdlib.h>
+
+#ifdef STM32H7_UART_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
  
 UART * UART::objUART3 = 0;
 UART * UART::objUART4 = 0;
 UART * UART::objUART7 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void USART3_IRQHandler(void);
-extern "C" __EXPORT void UART4_IRQHandler(void);
-extern "C" __EXPORT void UART7_IRQHandler(void);
+extern "C" void USART3_IRQHandler(void);
+extern "C" void UART4_IRQHandler(void);
+extern "C" void UART7_IRQHandler(void);
 
-UART::UART(port_t port, uint32_t baud, uint32_t bufferLength) : _port(port), _baud(baud), BaudRate(baud), _bufferLength(bufferLength), _bufferWriteIdx(0), _bufferReadIdx(0), _callbackTaskHandle(0), _resourceSemaphore(0), _transmitByteFinished(0), _RXdataAvailable(0), _RXcallback(0), _RXcallbackParameter(0)
+UART::UART(port_t port, uint32_t baud, uint32_t bufferLength) : _port(port), _baud(baud), BaudRate(baud), _bufferLength(bufferLength), _bufferWriteIdx(0), _bufferReadIdx(0),
+#ifdef USE_FREETOS
+    _callbackTaskHandle(0), _resourceSemaphore(0),
+#endif
+    _transmitByteFinished(0), _RXdataAvailable(0), _RXcallback(0), _RXcallbackParameter(0)
 {
-	if (_bufferLength > 0)
-		_buffer = (uint8_t *)pvPortMalloc(_bufferLength);
-	else
-		_buffer = 0;
+	if (_bufferLength > 0) {
+#ifdef USE_FREERTOS
+        _buffer = (uint8_t*)pvPortMalloc(_bufferLength);
+#else
+        _buffer = (uint8_t*)malloc(_bufferLength);
+#endif
+    } else {
+        _buffer = 0;
+    }
 	InitPeripheral();
 	ConfigurePeripheral();
 }
@@ -48,8 +63,13 @@ UART::~UART()
 {
 	DeInitPeripheral();
 
-	if (_buffer)
-		vPortFree(_buffer);
+	if (_buffer) {
+#ifdef USE_FREERTOS
+        vPortFree(_buffer);
+#else
+        free(_buffer);
+#endif
+    }
 }
 
 void UART::ConfigurePeripheral()
@@ -89,10 +109,8 @@ void UART::ConfigurePeripheral()
 	_handle.Init.HwFlowCtl = UART_HWCONTROL_NONE;
 	_handle.Init.OverSampling = UART_OVERSAMPLING_16;
 	_handle.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-	_handle.Init.Prescaler = UART_PRESCALER_DIV1;
-	_handle.Init.FIFOMode = UART_FIFOMODE_DISABLE;
-	_handle.Init.TXFIFOThreshold = UART_TXFIFO_THRESHOLD_1_8;
-	_handle.Init.RXFIFOThreshold = UART_RXFIFO_THRESHOLD_1_8;
+	_handle.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+	_handle.FifoMode = UART_FIFOMODE_DISABLE;
 	_handle.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
 
 	if (HAL_UART_Init(&_handle) != HAL_OK)
@@ -115,6 +133,7 @@ void UART::ConfigurePeripheral()
 			break;
 	}
 
+#ifdef USE_FREERTOS
 	_resourceSemaphore = xSemaphoreCreateBinary();
 	if (_resourceSemaphore == NULL) {
 		ERROR("Could not create UART resource semaphore");
@@ -138,6 +157,9 @@ void UART::ConfigurePeripheral()
 		return;
 	}
 	vQueueAddToRegistry(_RXdataAvailable, "UART RX Available");
+#else
+    _transmitByteFinished = true;
+#endif
 
 	/* Enable the UART Error Interrupt: (Frame error, noise error, overrun error) */
 	SET_BIT(_handle.Instance->CR3, USART_CR3_EIE);
@@ -153,7 +175,7 @@ void UART::ConfigurePeripheral()
 	}
 	else
 	{
-	  SET_BIT(_handle.Instance->CR1, USART_CR1_PEIE | USART_CR1_RXNEIE);
+	  SET_BIT(_handle.Instance->CR1, USART_CR1_PEIE | USART_CR1_RXNEIE_RXFNEIE);
 	}
 
 	/* Disable the UART Transmit Complete Interrupt */
@@ -278,6 +300,7 @@ void UART::DeInitPeripheral()
 
 }
 
+#ifdef USE_FREERTOS
 void UART::RegisterRXcallback(void (*callback)UART_CALLBACK_PARAMS, void * parameter, uint32_t chunkLength)
 {
 	_RXcallback = callback;
@@ -309,8 +332,8 @@ void UART::DeregisterCallback()
 		xTaskResumeFromISR(_callbackTaskHandle);
 		_callbackTaskHandle = 0;
 	}
-
 }
+#endif
 
 void UART::TransmitBlocking(uint8_t * buffer, uint32_t bufLen)
 {
@@ -323,11 +346,16 @@ void UART::TransmitBlocking(uint8_t * buffer, uint32_t bufLen)
 	}
 	else
 	{
-	  SET_BIT(_handle.Instance->CR1, USART_CR1_TXEIE);
+	  SET_BIT(_handle.Instance->CR1, USART_CR1_TXEIE_TXFNFIE);
 	}
 
 	do {
+#ifdef USE_FREERTOS
 		xSemaphoreTake( _transmitByteFinished, ( TickType_t ) portMAX_DELAY ); // block until it has finished sending the byte
+#else
+        while (!_transmitByteFinished);
+        _transmitByteFinished = false;
+#endif
 		_handle.Instance->TDR = *buffer++;
 		/* Enable the TX FIFO threshold interrupt (if FIFO mode is enabled) or
 		   Transmit Data Register Empty interrupt (if FIFO mode is Disabled).
@@ -338,7 +366,7 @@ void UART::TransmitBlocking(uint8_t * buffer, uint32_t bufLen)
 		}
 		else
 		{
-		  SET_BIT(_handle.Instance->CR1, USART_CR1_TXEIE);
+		  SET_BIT(_handle.Instance->CR1, USART_CR1_TXEIE_TXFNFIE);
 		}
 	} while (--bufLen > 0);
 
@@ -351,7 +379,7 @@ void UART::TransmitBlocking(uint8_t * buffer, uint32_t bufLen)
 	}
 	else
 	{
-	  CLEAR_BIT(_handle.Instance->CR1, USART_CR1_TXEIE);
+	  CLEAR_BIT(_handle.Instance->CR1, USART_CR1_TXEIE_TXFNFIE);
 	}
 }
 
@@ -366,21 +394,29 @@ void UART::TransmitBlockingHard(uint8_t * buffer, uint32_t bufLen)
 
 void UART::Write(uint8_t byte)
 {
+#ifdef USE_FREERTOS
 	xSemaphoreTake( _resourceSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
+#endif
 
 	// OBS! This should be replaced with a non-blocking call by making a TX queue and a processing thread in the UART object
 	TransmitBlocking(&byte, 1);
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
+#endif
 }
 
 uint32_t UART::Write(uint8_t * buffer, uint32_t length)
 {
+#ifdef USE_FREERTOS
 	xSemaphoreTake( _resourceSemaphore, ( TickType_t ) portMAX_DELAY ); // take hardware resource
+#endif
 
 	TransmitBlocking(buffer, length);
 
+#ifdef USE_FREERTOS
 	xSemaphoreGive( _resourceSemaphore ); // give hardware resource back
+#endif
 	return length;
 }
 
@@ -412,6 +448,7 @@ bool UART::Connected()
 	return true; // UART is always connected after initializing and configuring the periphiral (port is opened)
 }
 
+#ifdef USE_FREERTOS
 void UART::CallbackThread(void * pvParameters)
 {
 	UART * uart = (UART *)pvParameters;
@@ -457,10 +494,13 @@ void UART::CallbackThread(void * pvParameters)
 
 	vTaskDelete(NULL); // delete/stop this current task
 }
+#endif
 
 void UART::UART_IncomingDataInterrupt(UART * uart)
 {
+#ifdef USE_FREERTOS
 	portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+#endif
 
 	// Only call this function is RXNE interrupt flag is set
 	if (!uart) {
@@ -474,20 +514,33 @@ void UART::UART_IncomingDataInterrupt(UART * uart)
 	//__HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST); // should already have been cleared by reading
 
 	uart->BufferPush(uart->rxByte); // push into local buffer
+#ifdef USE_FREERTOS
 	if (uart->_RXcallback && uart->_callbackTaskHandle) {
 		portBASE_TYPE xHigherPriorityTaskWoken = xTaskResumeFromISR(uart->_callbackTaskHandle);
 		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 	}
 
-  if (uart->_RXdataAvailable)
+    if (uart->_RXdataAvailable)
 	  xSemaphoreGiveFromISR( uart->_RXdataAvailable, &xHigherPriorityTaskWoken );
 
 	portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#else
+    uart->_RXdataAvailable = true;
+#endif
 }
 
+#ifdef USE_FREERTOS
 uint32_t UART::WaitForNewData(uint32_t xTicksToWait) // blocking call
+#else
+void UART::WaitForNewData() // blocking call
+#endif
 {
+#ifdef USE_FREERTOS
 	return xSemaphoreTake( _RXdataAvailable, ( TickType_t ) xTicksToWait );
+#else
+    _RXdataAvailable = false;
+    while (!_RXdataAvailable);
+#endif
 }
 
 
@@ -538,8 +591,8 @@ void UART::UART_Interrupt(port_t port)
 	if (errorflags == RESET)
 	{
 		/* UART in mode Receiver ---------------------------------------------------*/
-		if(((isrflags & USART_ISR_RXNE) != RESET)
-			&& (   ((cr1its & USART_CR1_RXNEIE) != RESET)
+		if(((isrflags & UART_FLAG_RXNE) != RESET)
+			&& (   ((cr1its & USART_CR1_RXNEIE_RXFNEIE) != RESET)
 				|| ((cr3its & USART_CR3_RXFTIE) != RESET)) )
 		{
 			//UART_Receive_IT(huart);
@@ -551,7 +604,7 @@ void UART::UART_Interrupt(port_t port)
 	/* If some errors occur */
 	if(   (errorflags != RESET)
 		&& (   ((cr3its & (USART_CR3_RXFTIE | USART_CR3_EIE)) != RESET)
-			|| ((cr1its & (USART_CR1_RXNEIE | USART_CR1_PEIE)) != RESET)))
+			|| ((cr1its & (USART_CR1_RXNEIE_RXFNEIE | USART_CR1_PEIE)) != RESET)))
 	{
 		/* UART parity error interrupt occurred -------------------------------------*/
 		if(((isrflags & USART_ISR_PE) != RESET) && ((cr1its & USART_CR1_PEIE) != RESET))
@@ -579,7 +632,7 @@ void UART::UART_Interrupt(port_t port)
 
 		/* UART Over-Run interrupt occurred -----------------------------------------*/
 		if(   ((isrflags & USART_ISR_ORE) != RESET)
-		   &&(  ((cr1its & USART_CR1_RXNEIE) != RESET) ||
+		   &&(  ((cr1its & USART_CR1_RXNEIE_RXFNEIE) != RESET) ||
 				((cr3its & USART_CR3_RXFTIE) != RESET) ||
 				((cr3its & USART_CR3_EIE) != RESET)) )
 		{
@@ -592,8 +645,8 @@ void UART::UART_Interrupt(port_t port)
 		if(uart->_handle.ErrorCode != HAL_UART_ERROR_NONE)
 		{
 			/* UART in mode Receiver ---------------------------------------------------*/
-			if(((isrflags & USART_ISR_RXNE) != RESET)
-			&& (   ((cr1its & USART_CR1_RXNEIE) != RESET)
+			if(((isrflags & UART_FLAG_RXNE) != RESET)
+			&& (   ((cr1its & USART_CR1_RXNEIE_RXFNEIE) != RESET)
 			|| ((cr3its & USART_CR3_RXFTIE) != RESET)) )
 			{
 				//UART_Receive_IT(huart);
@@ -665,8 +718,8 @@ void UART::UART_Interrupt(port_t port)
 	}
 
 	/* UART in mode Transmitter ------------------------------------------------*/
-	if(((isrflags & USART_ISR_TXE) != RESET)
-	&& (   ((cr1its & USART_CR1_TXEIE) != RESET)
+	if(((isrflags & UART_FLAG_TXE) != RESET)
+	&& (   ((cr1its & USART_CR1_TXEIE_TXFNFIE) != RESET)
 	|| ((cr3its & USART_CR3_TXFTIE) != RESET)) )
 	{
 		//UART_Transmit_IT(huart);
@@ -679,12 +732,16 @@ void UART::UART_Interrupt(port_t port)
 		}
 		else
 		{
-		  CLEAR_BIT(uart->_handle.Instance->CR1, USART_CR1_TXEIE);
+		  CLEAR_BIT(uart->_handle.Instance->CR1, USART_CR1_TXEIE_TXFNFIE);
 		}
 
+#ifdef USE_FREERTOS
 		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 		xSemaphoreGiveFromISR( uart->_transmitByteFinished, &xHigherPriorityTaskWoken );
 		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#else
+        uart->_transmitByteFinished = true;
+#endif
 		return;
 	}
 
@@ -694,9 +751,13 @@ void UART::UART_Interrupt(port_t port)
 		//UART_EndTransmit_IT(huart);
 		__HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_TCF);
 
+#ifdef USE_FREERTOS
 		portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 		xSemaphoreGiveFromISR( uart->_transmitByteFinished, &xHigherPriorityTaskWoken );
 		portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+#else
+        uart->_transmitByteFinished = true;
+#endif
 		return;
 	}
 
@@ -755,7 +816,11 @@ uint8_t * UART::BufferPopN(uint32_t numberOfBytesToPop)
 {
 	uint8_t * popBuffer = 0;
 	if (numberOfBytesToPop > BufferContentSize()) return 0; // error, not enough content in buffer
+#ifdef USE_FREERTOS
 	popBuffer = (uint8_t *)pvPortMalloc(numberOfBytesToPop);
+#else
+    popBuffer = (uint8_t *)malloc(numberOfBytesToPop);
+#endif
 
 	if (popBuffer) {
 		for (uint32_t i = 0; i < numberOfBytesToPop; i++) {

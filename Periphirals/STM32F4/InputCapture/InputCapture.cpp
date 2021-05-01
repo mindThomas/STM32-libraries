@@ -27,7 +27,7 @@
 InputCapture::hardware_resource_t * InputCapture::resTIMER4 = 0;
  
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void TIM4_IRQHandler(void);
+extern "C" void TIM4_IRQHandler(void);
 
 InputCapture::InputCapture(timer_t timer, ic_channel_t channel, float maxTime) : _channel(channel), _channelHAL(0)
 {

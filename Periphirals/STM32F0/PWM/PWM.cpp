@@ -30,7 +30,7 @@ PWM::hardware_resource_t * PWM::resTIMER14 = 0;
 PWM::hardware_resource_t * PWM::resTIMER16 = 0;
 PWM::hardware_resource_t * PWM::resTIMER17 = 0;
 
-extern "C" __EXPORT void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
+extern "C" void TIM1_BRK_UP_TRG_COM_IRQHandler(void);
 
 PWM::PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue) : _channel(channel), _channelLL(0), _channelHAL(0)
 {

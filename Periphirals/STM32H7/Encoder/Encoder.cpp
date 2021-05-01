@@ -16,20 +16,25 @@
  * ------------------------------------------
  */
  
-#include "Encoder.h"
-#include "stm32h7xx_hal.h"
+#include "Encoder.hpp"
+
 #include "Priorities.h"
-#include "Debug.h"
 #include <string.h> // for memset
- 
+
+#ifdef STM32H7_ENCODER_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
+
 Encoder::hardware_resource_t * Encoder::resTIMER2 = 0;
 Encoder::hardware_resource_t * Encoder::resTIMER3 = 0;
 Encoder::hardware_resource_t * Encoder::resTIMER4 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void TIM2_IRQHandler(void);
-extern "C" __EXPORT void TIM3_IRQHandler(void);
-extern "C" __EXPORT void TIM4_IRQHandler(void);
+extern "C" void TIM2_IRQHandler(void);
+extern "C" void TIM3_IRQHandler(void);
+extern "C" void TIM4_IRQHandler(void);
 
 Encoder::Encoder(timer_t timer)
 {

@@ -59,9 +59,9 @@
   */ 
 
 /* Includes ------------------------------------------------------------------*/
-#include "usbd_cdc.h"
-#include "usbd_desc.h"
-#include "usbd_ctlreq.h"
+#include "../Inc/usbd_cdc.h"
+#include "../../../../usbd_desc.h"
+#include "../../../Core/Inc/usbd_ctlreq.h"
 
 
 /** @addtogroup STM32_USB_DEVICE_LIBRARY
@@ -148,9 +148,13 @@ __ALIGN_BEGIN static uint8_t USBD_CDC_DeviceQualifierDesc[USB_LEN_DEV_QUALIFIER_
 
 /**
   * @}
-  */ 
+  */
 
+#ifdef USE_FREERTOS
 SemaphoreHandle_t USB_TX_FinishedSemaphore = NULL;
+#else
+bool USB_TX_FinishedSemaphore = 1;
+#endif
 
 /** @defgroup USBD_CDC_Private_Variables
   * @{
@@ -470,10 +474,12 @@ __ALIGN_BEGIN uint8_t USBD_CDC_OtherSpeedCfgDesc[USB_CDC_CONFIG_DESC_SIZ] __ALIG
 static USBD_CDC_HandleTypeDef USBD_CDC_Handle;
 static _Bool HandleUsed = 0;
 
+#ifdef USE_FREERTOS
 void USBD_CDC_SetTXfinishedSemaphore(SemaphoreHandle_t semaphore)
 {
 	USB_TX_FinishedSemaphore = semaphore;
 }
+#endif
 
 /**
   * @brief  USBD_CDC_Init
@@ -533,6 +539,9 @@ static uint8_t  USBD_CDC_Init (USBD_HandleTypeDef *pdev,
   if (!HandleUsed) {
 	  pdev->pClassData = &USBD_CDC_Handle;
 	  HandleUsed = 1;
+#ifndef USE_FREERTOS
+      USB_TX_FinishedSemaphore = true;
+#endif
   }
   else {
 	  pdev->pClassData = NULL; // static handle is already in use
@@ -688,16 +697,24 @@ static uint8_t  USBD_CDC_Setup (USBD_HandleTypeDef *pdev,
 static uint8_t  USBD_CDC_DataIn (USBD_HandleTypeDef *pdev, uint8_t epnum)
 {
   USBD_CDC_HandleTypeDef   *hcdc = (USBD_CDC_HandleTypeDef*) pdev->pClassData;
+#ifdef USE_FREERTOS
   portBASE_TYPE xHigherPriorityTaskWoken;
+#endif
   
   if(pdev->pClassData != NULL)
   {
-    
+
+#ifdef USE_FREERTOS
 	xSemaphoreGiveFromISR( USB_TX_FinishedSemaphore, &xHigherPriorityTaskWoken );
+#else
+    USB_TX_FinishedSemaphore = true;
+#endif
 
 	hcdc->TxState = 0;
 
+#ifdef USE_FREERTOS
 	portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
+#endif
 
     return USBD_OK;
   }

@@ -16,8 +16,19 @@
  * ------------------------------------------
  */
  
-#include "Debug.h"
-#include "cmsis_os.h"
+#include <Debug/Debug.h>
+
+#include <IO/IO.hpp>
+
+#ifdef USE_FREERTOS_CMSIS
+#define delay(x) osDelay(x)
+#elif defined(USE_FREERTOS)
+#define delay(x) vTaskDelay(x)
+#else
+void HAL_Delay(uint32_t Delay); // forward declaration
+#define delay(x) HAL_Delay(x)
+#endif
+
 #ifdef DEBUG_PRINTF_ENABLED
 	#ifdef DEBUG_PRINTF_WITHOUT_LSPC
 		#include "UART.h"
@@ -25,15 +36,14 @@
 		#include "LSPC.hpp"
 	#endif
 #endif
-#include "IO.h"
 
 bool Debug::handleCreated = false;
 Debug Debug::debugHandle;
 
 // Necessary to export for compiler such that the Error_Handler function can be called by C code
-extern "C" __EXPORT void Error_Handler(void);
-extern "C" __EXPORT void Debug_print(const char * msg);
-extern "C" __EXPORT void Debug_Pulse();
+extern "C" void Error_Handler(void);
+extern "C" void Debug_print(const char * msg);
+extern "C" void Debug_Pulse();
 
 Debug::Debug() : com_(0), debugPulsePin_(0)
 {
@@ -88,7 +98,7 @@ void Debug::PackageGeneratorThread(void * pvParameters)
 
 	while (1)
 	{
-		osDelay(1);
+		delay(1);
 		xSemaphoreTake( debug->mutex_, ( TickType_t ) portMAX_DELAY ); // take debug mutex
 		if (debug->currentBufferLocation_ > 0) {
 			((LSPC*)debug->com_)->TransmitAsync(lspc::MessageTypesToPC::Debug, (const uint8_t *)debug->messageBuffer_, debug->currentBufferLocation_);
@@ -235,7 +245,7 @@ void Debug::Error(const char * type, const char * functionName, const char * msg
 	while (1)
 	{
 		Debug::Message(type, functionName, msg);
-		osDelay(500);
+		delay(500);
 	}
 }
 
@@ -249,7 +259,7 @@ void Debug::Pulse()
 {
 	if (!debugHandle.debugPulsePin_) return;
 	((IO*)debugHandle.debugPulsePin_)->High();
-	osDelay(50);
+	delay(50);
 	((IO*)debugHandle.debugPulsePin_)->Low();
 }
 

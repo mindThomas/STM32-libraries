@@ -26,7 +26,7 @@
   */ 
 
 /* Includes ------------------------------------------------------------------*/
-#include "usbd_core.h"
+#include "../Inc/usbd_core.h"
 
 /** @addtogroup STM32_USBD_DEVICE_LIBRARY
 * @{

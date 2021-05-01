@@ -29,12 +29,12 @@
 UART * UART::objUART2 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
-extern "C" __EXPORT void USART2_IRQHandler(void);
-extern "C" __EXPORT void DMA1_Channel3_IRQHandler(void);
-extern "C" __EXPORT void DMA1_Channel4_IRQHandler(void);
-extern "C" __EXPORT void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle);
-extern "C" __EXPORT void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle);
-extern "C" __EXPORT void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *UartHandle);
+extern "C" void USART2_IRQHandler(void);
+extern "C" void DMA1_Channel3_IRQHandler(void);
+extern "C" void DMA1_Channel4_IRQHandler(void);
+extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle);
+extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle);
+extern "C" void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *UartHandle);
 
 #ifdef USE_FREERTOS
 UART::UART(port_t port, uint32_t baud, uint32_t bufferLength, bool DMA_enabled) : BaudRate(baud), DMA_Enabled(DMA_enabled), _port(port), _rxByteAvailable(false), _rxAvailableOnIdle(false), _bufferLength(bufferLength), _bufferWriteIdx(0), _bufferReadIdx(0),

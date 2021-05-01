@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -15,9 +15,8 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef PERIPHIRALS_ADC_H
-#define PERIPHIRALS_ADC_H
+
+#pragma once
 
 #include "stm32h7xx_hal.h"
 
@@ -93,6 +92,3 @@ class ADC
 		hardware_resource_t * _hRes;
 		uint32_t _channel;
 };
-	
-	
-#endif

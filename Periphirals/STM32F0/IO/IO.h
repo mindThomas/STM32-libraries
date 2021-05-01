@@ -26,8 +26,10 @@
 #include "stm32f0xx_ll_gpio.h"
 #include "stm32f0xx_ll_exti.h"
 
-#ifdef USE_FREERTOS
+#ifdef USE_FREERTOS_CMSIS
 #include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
 #endif
 
 #define GPIO_PIN_0		LL_GPIO_PIN_0
