@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,10 +16,9 @@
  * ------------------------------------------
  */
 
-#ifndef PERIPHIRALS_PWM_H
-#define PERIPHIRALS_PWM_H
+#pragma once
 
-#include "stm32h7xx_hal.h"
+#include <stm32g4xx_hal.h>
 
 class PWM
 {
@@ -27,9 +26,7 @@ class PWM
 		typedef enum timer_t {
 			TIMER_UNDEFINED = 0,
 			TIMER1,
-			TIMER8,
-			TIMER15,
-			TIMER17
+			TIMER3
 		} timer_t;
 
 		typedef enum pwm_channel_t {
@@ -40,12 +37,12 @@ class PWM
 		} pwm_channel_t;
 
 	public:
-		PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue);
+		PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency);
 		PWM(timer_t timer, pwm_channel_t channel);
 		~PWM();
 
-		void InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue);
-		void ConfigureTimerPeripheral();
+		void InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency);
+		void ConfigureTimerPeripheral(bool fixedPrescaler = false);
 		void ConfigureTimerGPIO();
 		void ConfigureTimerChannel();
 
@@ -62,9 +59,7 @@ class PWM
 		} hardware_resource_t;
 
 		static hardware_resource_t * resTIMER1;
-		static hardware_resource_t * resTIMER8;
-		static hardware_resource_t * resTIMER15;
-		static hardware_resource_t * resTIMER17;
+		static hardware_resource_t * resTIMER3;
 
 	private:
 		hardware_resource_t * _hRes;
@@ -72,6 +67,3 @@ class PWM
 		bool _complementaryOutput; // Channel xN ?
 		uint32_t _channelHAL;
 };
-
-
-#endif

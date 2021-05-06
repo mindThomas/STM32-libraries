@@ -20,14 +20,14 @@
 #define APPLICATION_TEMPLATE_H
 
 #include "cmsis_os.h"
-#include "Priorities.h"
+#include <Priorities.h>
 #include "Parameters.h"
 
 class ApplicationTemplate
 {
 	private:
 		const int THREAD_STACK_SIZE = 256; // depending on the resource usage in the main loop (Thread function) you might want to increase this STACK_SIZE value
-		const uint32_t THREAD_PRIORITY = APPLICATION_TEMPLATE_PRIORITY; // modify the task priorities in "Priorities.h"
+		const uint32_t THREAD_PRIORITY = APPLICATION_TEMPLATE_PRIORITY; // modify the task priorities in <Priorities.h>
 
 	public:
 		ApplicationTemplate();

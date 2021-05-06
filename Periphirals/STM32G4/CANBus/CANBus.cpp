@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -17,12 +17,20 @@
  */
 
 #include "CANBus.hpp"
-#include "stm32g4xx_hal_timebase_tim.h" // for HAL_GetHighResTick()
 
-#include <Debug/Debug.h>
-#include "Priorities.h"
+#ifdef USE_PRECISION_SYSTICK
+#include <PrecisionSysTick/PrecisionSysTick.h> // for HAL_GetHighResTick()
+#endif
+
+#include <Priorities.h>
 #include <math.h>
 #include <string.h> // for memset
+
+#ifdef STM32G4_CANBUS_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 CANBus::hardware_resource_t* CANBus::resCAN = 0;
 
@@ -124,6 +132,15 @@ void CANBus::InitPeripheral()
 #endif
 
         // Configure pins for CAN and CAN peripheral accordingly
+        /* Initializes the peripherals clocks */
+        RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+        PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
+        PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PCLK1;
+        if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+        {
+            ERROR("Could not initialize FDCAN periphiral clock");
+        }
+
         /* Peripheral clock enable */
         __HAL_RCC_FDCAN_CLK_ENABLE();
 
@@ -454,7 +471,11 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef* hfdcan, uint32_t RxFifo0ITs)
             // Convert received frame into CAN package type
             can->RxPackage.ID         = can->RxHeader.Identifier;
             can->RxPackage.DataLength = CANBus::GetPackageLength(can->RxHeader.DataLength);
+#ifdef USE_PRECISION_SYSTICK
             can->RxPackage.Timestamp  = HAL_GetHighResTick(); // could also be can->RxHeader.Timestamp
+#else
+            can->RxPackage.Timestamp  = HAL_GetTick(); // could also be can->RxHeader.Timestamp
+#endif
             memcpy(can->RxPackage.Data, data, can->RxPackage.DataLength);
 
 #ifdef USE_FREERTOS

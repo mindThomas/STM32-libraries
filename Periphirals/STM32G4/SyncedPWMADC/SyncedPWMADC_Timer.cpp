@@ -1,4 +1,4 @@
-/* Copyright (C) 2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2020- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -17,10 +17,15 @@
  */
 
 #include "SyncedPWMADC.hpp"
-#include <Debug/Debug.h>
-#include "stm32g4xx_hal.h"
+
 #include <math.h>   // for roundf
 #include <string.h> // for memset
+
+#ifdef STM32G4_SYNCEDPWMADC_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" void TIM1_UP_TIM16_IRQHandler(void);
@@ -199,7 +204,7 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
 
     timerSettingsNext.Frequency = frequency;
 
-    volatile uint32_t TimerClock = HAL_RCC_GetPCLK2Freq();
+    uint32_t TimerClock = HAL_RCC_GetPCLK2Freq();
 
     /* Configure the timer frequency */
     hTimer.Instance           = TIM1;

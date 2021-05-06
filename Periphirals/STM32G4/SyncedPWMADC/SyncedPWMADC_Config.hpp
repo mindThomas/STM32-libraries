@@ -1,4 +1,4 @@
-/* Copyright (C) 2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2020- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -15,9 +15,8 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef PERIPHIRALS_SYNCEDPWMADC_CONFIG_H
-#define PERIPHIRALS_SYNCEDPWMADC_CONFIG_H
+
+#pragma once
 
 	private:
 		void ConfigureDigitalPins();
@@ -78,5 +77,3 @@
 		bool _ADCEnabled;
 		bool _SamplingEnabled;
 		bool _TimerEnabled;
-
-#endif

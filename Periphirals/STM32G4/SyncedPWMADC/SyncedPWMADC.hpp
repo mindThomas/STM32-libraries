@@ -1,4 +1,4 @@
-/* Copyright (C) 2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2020- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -15,20 +15,24 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef PERIPHIRALS_SYNCEDPWMADC_H
-#define PERIPHIRALS_SYNCEDPWMADC_H
 
-#include "stm32g4xx_hal.h"
-#include "stm32g4xx_hal_tim.h"
-#include "stm32g4xx_hal_tim_ex.h"
-#include "stm32g4xx_hal_adc.h"
-#include "stm32g4xx_hal_adc_ex.h"
-#include "stm32g4xx_hal_dma.h"
+#pragma once
 
-#include <IO/IO.hpp>
-#include <Encoder/Encoder.hpp>
+#include <stm32g4xx_hal.h>
+#include <stm32g4xx_hal_tim.h>
+#include <stm32g4xx_hal_tim_ex.h>
+#include <stm32g4xx_hal_adc.h>
+#include <stm32g4xx_hal_adc_ex.h>
+#include <stm32g4xx_hal_dma.h>
+
 #include <unordered_map>
+
+// FreeRTOS for semaphore support
+#if defined(USE_FREERTOS)
+#include <FreeRTOS.h>
+#include <semphr.h>
+#include <queue.h>
+#endif
 
 /* To Do
  *  - Allow switching between Brake mode and Coast mode
@@ -54,6 +58,10 @@
 
 #define SAMPLE_QUEUE_SIZE	10
 #define	ADC_MAX_VALUE		4096.f // defined by the ADC resolution
+
+// Forward declarations
+class IO;
+class Encoder;
 
 class SyncedPWMADC
 {
@@ -334,6 +342,3 @@ class SyncedPWMADC
 	public:
 		static SyncedPWMADC * globalObject;
 };
-	
-	
-#endif

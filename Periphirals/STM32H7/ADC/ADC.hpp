@@ -18,7 +18,16 @@
 
 #pragma once
 
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
+
+/* Macro to get variable aligned on 32-bytes */
+#if defined   (__GNUC__)        /* GNU Compiler */
+#define ALIGN_32BYTES(buf)  buf __attribute__ ((aligned (32)))
+#elif defined (__ICCARM__)    /* IAR Compiler */
+#define ALIGN_32BYTES(buf) _Pragma("data_alignment=32") buf
+#elif defined   (__CC_ARM)      /* ARM Compiler */
+  #define ALIGN_32BYTES(buf) __align(32) buf
+#endif
 
 class ADC
 {

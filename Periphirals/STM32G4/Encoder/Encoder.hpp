@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -15,13 +15,12 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef PERIPHIRALS_ENCODER_H
-#define PERIPHIRALS_ENCODER_H
 
-#include "stm32g4xx_hal.h"
-#include "stm32g4xx_hal_tim.h"
-#include "stm32g4xx_hal_tim_ex.h"
+#pragma once
+
+#include <stm32g4xx_hal.h>
+#include <stm32g4xx_hal_tim.h>
+#include <stm32g4xx_hal_tim_ex.h>
 
 class Encoder
 {
@@ -56,6 +55,3 @@ class Encoder
 	public:
 		static void InterruptHandler(Encoder::hardware_resource_t * encoder);
 };
-	
-	
-#endif

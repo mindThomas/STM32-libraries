@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -15,17 +15,17 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef PERIPHIRALS_UART_H
-#define PERIPHIRALS_UART_H
 
-#include "stm32g4xx_hal.h"
-#include "stm32g4xx_hal_uart.h"
-#include "stm32g4xx_hal_uart_ex.h"
-#include "stm32g4xx_hal_dma.h"
+#pragma once
 
-#ifdef USE_FREERTOS
-#include "cmsis_os.h" // for memory allocation (for the buffer) and callback
+#include <stm32g4xx_hal.h>
+
+// FreeRTOS for memory allocation (for the buffer) and callback
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#include "semphr.h"
 #endif
 
 #define UART_CALLBACK_PARAMS (void * param, uint8_t * buffer, uint32_t bufLen)
@@ -67,6 +67,7 @@ class UART
 		void DeInitPeripheral_DMA();
 		void ConfigurePeripheral();
 		void ConfigurePeripheral_DMA();
+
 		void RegisterRXcallback(void (*callback)UART_CALLBACK_PARAMS, void * parameter = (void*)0, uint32_t chunkLength = 0); // callback with chunks of available data
 		void DeregisterCallback();
 
@@ -113,8 +114,9 @@ class UART
 		SemaphoreHandle_t _resourceSemaphore;
 		SemaphoreHandle_t _transmitFinished;
 		SemaphoreHandle_t _RXdataAvailable;
-	#else
-		bool _transmitByteFinished;
+    #else
+        bool _transmitFinished;
+        bool _RXdataAvailable;
 	#endif
 		void (*_RXcallback)UART_CALLBACK_PARAMS;
 		void * _RXcallbackParameter;
@@ -145,5 +147,3 @@ class UART
 	public:
 		static UART * objUART2;
 };
-	
-#endif

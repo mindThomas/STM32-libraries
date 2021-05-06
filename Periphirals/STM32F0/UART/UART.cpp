@@ -19,7 +19,7 @@
 #include "UART.hpp"
 
 #include <Debug/Debug.h>
-#include "Priorities.h"
+#include <Priorities.h>
 #include <string.h> // for memset
 
 #ifndef USE_FREERTOS

@@ -18,7 +18,7 @@
 
 #include "IO.hpp"
 #include <Debug/Debug.h>
-#include "Priorities.h"
+#include <Priorities.h>
 
 IO* IO::interruptObjects[16] = {0};
 

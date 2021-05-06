@@ -61,7 +61,7 @@
 #include <string.h>
 
 #include "stm32h7xx.h"
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
 
 /* USER CODE BEGIN INCLUDE */
 // FreeRTOS for malloc etc.

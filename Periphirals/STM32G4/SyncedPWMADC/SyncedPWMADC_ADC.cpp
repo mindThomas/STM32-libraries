@@ -1,4 +1,4 @@
-/* Copyright (C) 2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2020- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -17,10 +17,15 @@
  */
 
 #include "SyncedPWMADC.hpp"
-#include <Debug/Debug.h>
-#include "stm32g4xx_hal.h"
+
 #include <math.h>   // for roundf
 #include <string.h> // for memset
+
+#ifdef STM32G4_SYNCEDPWMADC_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" void DMA1_Channel1_IRQHandler(void);
@@ -193,6 +198,15 @@ void SyncedPWMADC::DeInitOpAmps()
 void SyncedPWMADC::InitADCs()
 {
     ADC_HandleTypeDef hADC_Config;
+
+    /* Initialize the peripherals clocks */
+    RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC12;
+    PeriphClkInit.Adc12ClockSelection = RCC_ADC12CLKSOURCE_SYSCLK;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+    {
+        ERROR("Could not initialize ADC periphiral clock");
+    }
 
     /* Peripheral clock enable */
     __HAL_RCC_ADC12_CLK_ENABLE();

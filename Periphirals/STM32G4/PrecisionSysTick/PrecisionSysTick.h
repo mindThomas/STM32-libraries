@@ -1,16 +1,17 @@
-#ifndef __STM32H7xx_HAL_TIMEBASE_TIM_H
-#define __STM32H7xx_HAL_TIMEBASE_TIM_H
+#ifndef __STM32G4xx_HAL_TIMEBASE_TIM_H
+#define __STM32G4xx_HAL_TIMEBASE_TIM_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include <stm32h7xx_hal.h>
+#include <stm32g4xx_hal.h>
 
 uint32_t HAL_GetTickTimerValue(void);
 uint32_t HAL_GetHighResTick(void);
 void HAL_DelayHighRes(uint32_t Delay);
+float HAL_GetTime(void);
 
 uint32_t HAL_tic();
 float HAL_toc(uint32_t timerPrev);
@@ -19,4 +20,4 @@ float HAL_toc(uint32_t timerPrev);
 }
 #endif
 
-#endif /* __STM32H7xx_HAL_TIMEBASE_TIM_H */
+#endif /* __STM32G4xx_HAL_TIMEBASE_TIM_H */

@@ -21,7 +21,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "Debug.h" // for Error_Handler
-#include "Priorities.h"
+#include <Priorities.h>
 #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
 #include "usbd_core.h"

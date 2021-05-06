@@ -16,7 +16,7 @@
  * ------------------------------------------
  */
 
-#include "Priorities.h"
+#include <Priorities.h>
 #include <IO/IO.hpp>
 
 #ifdef STM32H7_IO_USE_DEBUG

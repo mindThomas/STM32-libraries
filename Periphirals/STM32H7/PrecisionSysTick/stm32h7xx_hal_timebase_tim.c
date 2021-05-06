@@ -1,10 +1,12 @@
 /* Includes ------------------------------------------------------------------*/
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
 #include "stm32h7xx_hal_tim.h"
 
-#ifndef HAL_SYSTICK_FREQUENCY
-#define HAL_SYSTICK_FREQUENCY 10000 // 10 kHz
+#ifndef STM32H7_PRECISION_SYSTICK_FREQUENCY
+#define STM32H7_PRECISION_SYSTICK_FREQUENCY 10000 // 10 kHz
 #endif
+
+// ToDo: This should be modified to reflect the STM32G4 PrecisionSysTick library!
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -50,7 +52,7 @@ HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
     uint32_t TimerClock = 2 * HAL_RCC_GetPCLK2Freq();
 
     /* Compute the prescaler value to have TIM16 counter clock equal to 10 kHz */
-    uwPrescalerValue = (uint32_t)((TimerClock / HAL_SYSTICK_FREQUENCY) - 1);
+    uwPrescalerValue = (uint32_t)((TimerClock / STM32H7_PRECISION_SYSTICK_FREQUENCY) - 1);
 
     /* Initialize TIM16 */
     htim16.Instance = TIM16;
@@ -62,7 +64,7 @@ HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
     + Counter direction = Up
     */
     // Modified by Thomas: Configure timer to overflow every second, thus firing an interrupt @ 1 Hz rate
-    htim16.Init.Period        = (HAL_SYSTICK_FREQUENCY / 1) - 1;
+    htim16.Init.Period        = (STM32H7_PRECISION_SYSTICK_FREQUENCY / 1) - 1;
     htim16.Init.Prescaler     = uwPrescalerValue;
     htim16.Init.ClockDivision = 0;
     htim16.Init.CounterMode   = TIM_COUNTERMODE_UP;
@@ -139,7 +141,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 void HAL_IncTick(void)
 {
     uwTickHighRes +=
-      HAL_SYSTICK_FREQUENCY; // timer update rate configured 1 Hz but with timer count frequency running at 10 kHz
+      STM32H7_PRECISION_SYSTICK_FREQUENCY; // timer update rate configured 1 Hz but with timer count frequency running at 10 kHz
 }
 
 uint32_t HAL_GetHighResTick(void)
@@ -161,7 +163,7 @@ float HAL_toc(uint32_t timerPrev)
     else
         timerDelta = ((uint32_t)0xFFFFFFFF - timerPrev) + timerNow;
 
-    float microsTime = (float)timerDelta / HAL_SYSTICK_FREQUENCY;
+    float microsTime = (float)timerDelta / STM32H7_PRECISION_SYSTICK_FREQUENCY;
     return microsTime;
 }
 

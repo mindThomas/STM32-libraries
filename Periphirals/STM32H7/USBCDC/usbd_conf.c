@@ -48,11 +48,11 @@
  */
 
 /* Includes ------------------------------------------------------------------*/
-#include "Priorities.h"
+#include <Priorities.h>
 #include "STM32_USB_Device_Library/Core/Inc/usbd_core.h"
 #include "STM32_USB_Device_Library/Core/Inc/usbd_def.h"
 #include "stm32h7xx.h"
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
 
 // for Error_Handler
 #ifdef STM32H7_IO_USE_DEBUG

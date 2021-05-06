@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
 
 // FreeRTOS for memory allocation (for the buffer) and callback
 #ifdef USE_FREERTOS_CMSIS
@@ -56,11 +56,9 @@ public:
     void DeInitPeripheral();
     void ConfigurePeripheral();
 
-#ifdef USE_FREERTOS
     void RegisterRXcallback(void(*callback) UART_CALLBACK_PARAMS, void* parameter = (void*)0,
                             uint32_t chunkLength = 0); // callback with chunks of available data
     void DeregisterCallback();
-#endif
 
     void     Write(uint8_t byte);
     uint32_t Write(uint8_t* buffer, uint32_t length);
@@ -71,7 +69,7 @@ public:
 #ifdef USE_FREERTOS
     uint32_t WaitForNewData(uint32_t xTicksToWait = portMAX_DELAY);
 #else
-    void WaitForNewData();
+    uint32_t WaitForNewData(uint32_t xTicksToWait = 0);
 #endif
     bool Connected();
 

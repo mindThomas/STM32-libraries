@@ -409,6 +409,8 @@ void PWM::ConfigureTimerChannel()
 // Set a duty-cycle value between 0-1, where 0 results in an always LOW signal and 1 results in an always HIGH signal
 void PWM::Set(float value)
 {
+    if (!_hRes)
+        return;
     if (value < 0)
         value = 0.0f;
     if (value > 1)

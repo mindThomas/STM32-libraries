@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -19,10 +19,16 @@
 /* Use input capture to measure time between rising and/or falling edges of an input */
 
 #include "InputCapture.hpp"
-#include <Debug/Debug.h>
-#include "Priorities.h"
+
+#include <Priorities.h>
 #include <math.h>   // for roundf
 #include <string.h> // for memset
+
+#ifdef STM32G4_INPUTCAPTURE_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 InputCapture::hardware_resource_t* InputCapture::resTIMER4 = 0;
 

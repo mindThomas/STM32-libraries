@@ -19,7 +19,7 @@
 #include "Encoder.hpp"
 
 #include <Debug/Debug.h>
-#include "Priorities.h"
+#include <Priorities.h>
 #include <string.h> // for memset
 
 Encoder::hardware_resource_t* Encoder::resTIMER2 = 0;

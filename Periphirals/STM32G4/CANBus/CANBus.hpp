@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -15,12 +15,11 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef PERIPHIRALS_CANBUS_H
-#define PERIPHIRALS_CANBUS_H
 
-#include "stm32g4xx_hal.h"
-#include "stm32g4xx_hal_fdcan.h"
+#pragma once
+
+#include <stm32g4xx_hal.h>
+#include <stm32g4xx_hal_fdcan.h>
 
 //#include <algorithm>
 //#include <array>
@@ -30,8 +29,13 @@
 //#include <stdexcept>
 //#include <vector>
 
-#ifdef USE_FREERTOS
-#include "cmsis_os.h" // for memory allocation (for the buffer) and callback
+// FreeRTOS for memory allocation (for the buffer) and callback
+#ifdef USE_FREERTOS_CMSIS
+#include <cmsis_os.h>
+#elif defined(USE_FREERTOS)
+#include <FreeRTOS.h>
+#include <semphr.h>
+#include <queue.h>
 #endif
 
 class CANBus
@@ -102,6 +106,3 @@ class CANBus
 		static uint8_t GetPackageLength(uint32_t DLC);
 		static uint32_t ConvertToPackageLength(uint8_t payloadLength);
 };
-	
-	
-#endif

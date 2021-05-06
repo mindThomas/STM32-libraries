@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,10 +16,9 @@
  * ------------------------------------------
  */
 
-#ifndef PERIPHIRALS_INPUTCAPTURE_H
-#define PERIPHIRALS_INPUTCAPTURE_H
+#pragma once
 
-#include "stm32f4xx_hal.h"
+#include <stm32g4xx_hal.h>
 
 class InputCapture
 {
@@ -74,6 +73,3 @@ class InputCapture
 	public:
 		static void InterruptHandler(InputCapture::hardware_resource_t * timer);
 };
-
-
-#endif

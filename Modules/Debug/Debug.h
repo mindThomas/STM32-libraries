@@ -35,7 +35,7 @@
 #include "semphr.h"
 #endif
 
-#include "Priorities.h"
+#include <Priorities.h>
 
 #define DEBUG(msg)	Debug::Message("DEBUG: ", __PRETTY_FUNCTION__, msg)
 #define ERROR(msg)	Debug::Error("ERROR: ", __PRETTY_FUNCTION__, msg)

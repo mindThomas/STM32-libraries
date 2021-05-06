@@ -18,9 +18,9 @@
 
 #pragma once
 
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
 
-#include "Priorities.h"
+#include <Priorities.h>
 
 // FreeRTOS for USB processing task
 #ifdef USE_FREERTOS_CMSIS

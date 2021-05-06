@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
 
 // FreeRTOS for memory allocation (for the buffer) and callback
 #ifdef USE_FREERTOS_CMSIS

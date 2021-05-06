@@ -18,7 +18,7 @@
 
 #include "Encoder.hpp"
 
-#include "Priorities.h"
+#include <Priorities.h>
 #include <string.h> // for memset
 
 #ifdef STM32H7_ENCODER_USE_DEBUG

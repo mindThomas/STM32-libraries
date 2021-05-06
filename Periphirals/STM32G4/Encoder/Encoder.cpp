@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -17,9 +17,15 @@
  */
 
 #include "Encoder.hpp"
-#include <Debug/Debug.h>
-#include "Priorities.h"
+
+#include <Priorities.h>
 #include <string.h> // for memset
+
+#ifdef STM32G4_ENCODER_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 Encoder::hardware_resource_t* Encoder::resTIMER4 = 0;
 

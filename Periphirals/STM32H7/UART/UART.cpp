@@ -18,13 +18,22 @@
 
 #include "UART.hpp"
 
-#include "Priorities.h"
+#include <Priorities.h>
 #include <stdlib.h>
+
+// HAL libraries
+#include <stm32h7xx_hal_uart.h>
+#include <stm32h7xx_hal_uart_ex.h>
+#include <stm32h7xx_hal_dma.h>
 
 #ifdef STM32H7_UART_USE_DEBUG
 #include <Debug/Debug.h>
 #else
 #define ERROR(msg) ((void)0U); // not implemented
+#endif
+
+#ifndef USE_FREERTOS
+#include <malloc.h>
 #endif
 
 UART* UART::objUART3 = 0;
@@ -43,13 +52,11 @@ UART::UART(port_t port, uint32_t baud, uint32_t bufferLength)
     , _bufferLength(bufferLength)
     , _bufferWriteIdx(0)
     , _bufferReadIdx(0)
-    ,
 #ifdef USE_FREETOS
-    _callbackTaskHandle(0)
+    , _callbackTaskHandle(0)
     , _resourceSemaphore(0)
-    ,
 #endif
-    _transmitByteFinished(0)
+    , _transmitByteFinished(0)
     , _RXdataAvailable(0)
     , _RXcallback(0)
     , _RXcallbackParameter(0)
@@ -60,6 +67,11 @@ UART::UART(port_t port, uint32_t baud, uint32_t bufferLength)
 #else
         _buffer = (uint8_t*)malloc(_bufferLength);
 #endif
+        if (_buffer == NULL) {
+            ERROR("Could not create UART buffer");
+            return;
+        }
+        memset(_buffer, 0, _bufferLength);
     } else {
         _buffer = 0;
     }
@@ -298,13 +310,13 @@ void UART::DeInitPeripheral()
     }
 }
 
-#ifdef USE_FREERTOS
 void UART::RegisterRXcallback(void(*callback) UART_CALLBACK_PARAMS, void* parameter, uint32_t chunkLength)
 {
     _RXcallback          = callback;
     _RXcallbackParameter = parameter;
     _callbackChunkLength = chunkLength;
 
+#ifdef USE_FREERTOS
     switch (_port) {
         case PORT_UART3:
             xTaskCreate(UART::CallbackThread, (char*)"UART3 callback", 512, (void*)this, UART_RECEIVER_PRIORITY,
@@ -321,6 +333,7 @@ void UART::RegisterRXcallback(void(*callback) UART_CALLBACK_PARAMS, void* parame
         default:
             break;
     }
+#endif
 }
 
 void UART::DeregisterCallback()
@@ -329,12 +342,13 @@ void UART::DeregisterCallback()
     _RXcallbackParameter = 0;
     _callbackChunkLength = 0;
 
+#ifdef USE_FREERTOS
     if (_callbackTaskHandle) {
         xTaskResumeFromISR(_callbackTaskHandle);
         _callbackTaskHandle = 0;
     }
-}
 #endif
+}
 
 void UART::TransmitBlocking(uint8_t* buffer, uint32_t bufLen)
 {
@@ -524,21 +538,36 @@ void UART::UART_IncomingDataInterrupt(UART* uart)
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 #else
     uart->_RXdataAvailable = true;
+    if (uart->_RXcallback) {
+        if (!uart->_bufferLength) { // buffer not enabled - use raw byte reading
+            uart->_RXcallback(uart->_RXcallbackParameter, &uart->rxByte, 1);
+        }
+    }
 #endif
 }
 
-#ifdef USE_FREERTOS
-uint32_t UART::WaitForNewData(uint32_t xTicksToWait) // blocking call
-#else
-void UART::WaitForNewData() // blocking call
-#endif
+uint32_t UART::WaitForNewData(uint32_t millisecondsToWait) // blocking call
 {
 #ifdef USE_FREERTOS
-    return xSemaphoreTake(_RXdataAvailable, (TickType_t)xTicksToWait);
+    if (Available()) {
+        xSemaphoreTake(_RXdataAvailable, (TickType_t)0);
+        return pdTRUE;
+    }
+    return xSemaphoreTake(_RXdataAvailable, (TickType_t)millisecondsToWait);
 #else
-    _RXdataAvailable = false;
-    while (!_RXdataAvailable)
-        ;
+    if (millisecondsToWait == 0) {
+        while (!Available())
+            ;
+    } else {
+        uint32_t timeout = millisecondsToWait;
+        while (timeout-- > 0) {
+            if (Available()) {
+                return true;
+            }
+            HAL_Delay(1);
+        }
+        return false;
+    }
 #endif
 }
 

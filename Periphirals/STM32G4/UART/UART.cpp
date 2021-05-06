@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -18,9 +18,19 @@
 
 #include "UART.hpp"
 
-#include <Debug/Debug.h>
-#include "Priorities.h"
+#include <Priorities.h>
 #include <string.h> // for memset
+
+// HAL libraries
+#include <stm32g4xx_hal_uart.h>
+#include <stm32g4xx_hal_uart_ex.h>
+#include <stm32g4xx_hal_dma.h>
+
+#ifdef STM32G4_UART_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 #ifndef USE_FREERTOS
 #include <malloc.h>
@@ -46,8 +56,10 @@ UART::UART(port_t port, uint32_t baud, uint32_t bufferLength, bool DMA_enabled)
     , _bufferLength(bufferLength)
     , _bufferWriteIdx(0)
     , _bufferReadIdx(0)
+#ifdef USE_FREETOS
     , _callbackTaskHandle(0)
     , _resourceSemaphore(0)
+#endif
     , _callbackChunkLength(0)
     , _txPointer(0)
     , _txRemainingBytes(0)
@@ -151,6 +163,8 @@ void UART::ConfigurePeripheral()
         return;
     }
     vQueueAddToRegistry(_RXdataAvailable, "UART RX Available");
+#else
+    _transmitFinished = true;
 #endif
 
     _handle.Init.BaudRate               = BaudRate;
@@ -258,6 +272,15 @@ void UART::InitPeripheral()
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
     if (_port == PORT_UART2) {
+        /* Initializes the peripherals clocks */
+        RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+        PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2;
+        PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+        if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+        {
+            ERROR("Could not initialize UART periphiral clock");
+        }
+
         /* Peripheral clock enable */
         __HAL_RCC_USART2_CLK_ENABLE();
         __HAL_RCC_GPIOB_CLK_ENABLE();
@@ -597,6 +620,7 @@ bool UART::Connected()
     return true; // UART is always connected after initializing and configuring the periphiral (port is opened)
 }
 
+#ifdef USE_FREERTOS
 void UART::CallbackThread(void* pvParameters)
 {
     UART* uart = (UART*)pvParameters;
@@ -644,6 +668,7 @@ void UART::CallbackThread(void* pvParameters)
 
     vTaskDelete(NULL); // delete/stop this current task
 }
+#endif
 
 void UART::UART_IncomingDataInterrupt(UART* uart)
 {

@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "stm32h7xx_hal.h"
+#include <stm32h7xx_hal.h>
 #include <string.h> // for memcpy
 
 // FreeRTOS for semaphore support

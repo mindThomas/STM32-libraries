@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -17,25 +17,28 @@
  */
 
 #include "PWM.hpp"
-#include <Debug/Debug.h>
-#include "stm32h7xx_hal.h"
+
 #include <math.h>   // for roundf
 #include <string.h> // for memset
 
-PWM::hardware_resource_t* PWM::resTIMER1  = 0;
-PWM::hardware_resource_t* PWM::resTIMER8  = 0;
-PWM::hardware_resource_t* PWM::resTIMER15 = 0;
-PWM::hardware_resource_t* PWM::resTIMER17 = 0;
+#ifdef STM32G4_PWM_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
-PWM::PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue)
+PWM::hardware_resource_t* PWM::resTIMER1  = 0;
+PWM::hardware_resource_t* PWM::resTIMER3  = 0;
+
+PWM::PWM(timer_t timer, pwm_channel_t channel, uint32_t frequency)
     : _channel(channel)
     , _channelHAL(0)
 {
-    InitPeripheral(timer, channel, frequency, maxValue);
+    InitPeripheral(timer, channel, frequency);
 }
 
 PWM::PWM(timer_t timer, pwm_channel_t channel)
-    : PWM(timer, channel, 0, 0)
+    : PWM(timer, channel, 0)
 {}
 
 PWM::~PWM()
@@ -63,17 +66,9 @@ PWM::~PWM()
                 __HAL_RCC_TIM1_CLK_DISABLE();
                 resTIMER1 = 0;
                 break;
-            case TIMER8:
-                __HAL_RCC_TIM8_CLK_DISABLE();
-                resTIMER8 = 0;
-                break;
-            case TIMER15:
-                __HAL_RCC_TIM15_CLK_DISABLE();
-                resTIMER15 = 0;
-                break;
-            case TIMER17:
-                __HAL_RCC_TIM17_CLK_DISABLE();
-                resTIMER17 = 0;
+            case TIMER3:
+                __HAL_RCC_TIM3_CLK_DISABLE();
+                resTIMER3 = 0;
                 break;
             default:
                 ERROR("Undefined timer");
@@ -82,7 +77,7 @@ PWM::~PWM()
     }
 }
 
-void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency, uint16_t maxValue)
+void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequency)
 {
     bool configureResource = false;
 
@@ -91,7 +86,7 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
     switch (timer) {
         case TIMER1:
             if (!resTIMER1) {
-                if (frequency > 0 && maxValue > 0) { // only configure if frequency and maxValue is set
+                if (frequency > 0) { // only configure if frequency is set
                     resTIMER1 = new PWM::hardware_resource_t;
                     memset(resTIMER1, 0, sizeof(PWM::hardware_resource_t));
                     configureResource = true;
@@ -101,40 +96,16 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
                 _hRes = resTIMER1;
             }
             break;
-        case TIMER8:
-            if (!resTIMER8) {
-                if (frequency > 0 && maxValue > 0) { // only configure if frequency and maxValue is set
-                    resTIMER8 = new PWM::hardware_resource_t;
-                    memset(resTIMER8, 0, sizeof(PWM::hardware_resource_t));
+        case TIMER3:
+            if (!resTIMER3) {
+                if (frequency > 0) { // only configure if frequency is set
+                    resTIMER3 = new PWM::hardware_resource_t;
+                    memset(resTIMER3, 0, sizeof(PWM::hardware_resource_t));
                     configureResource = true;
-                    _hRes             = resTIMER8;
+                    _hRes             = resTIMER3;
                 }
             } else {
-                _hRes = resTIMER8;
-            }
-            break;
-        case TIMER15:
-            if (!resTIMER15) {
-                if (frequency > 0 && maxValue > 0) { // only configure if frequency and maxValue is set
-                    resTIMER15 = new PWM::hardware_resource_t;
-                    memset(resTIMER15, 0, sizeof(PWM::hardware_resource_t));
-                    configureResource = true;
-                    _hRes             = resTIMER15;
-                }
-            } else {
-                _hRes = resTIMER15;
-            }
-            break;
-        case TIMER17:
-            if (!resTIMER17) {
-                if (frequency > 0 && maxValue > 0) { // only configure if frequency and maxValue is set
-                    resTIMER17 = new PWM::hardware_resource_t;
-                    memset(resTIMER17, 0, sizeof(PWM::hardware_resource_t));
-                    configureResource = true;
-                    _hRes             = resTIMER17;
-                }
-            } else {
-                _hRes = resTIMER17;
+                _hRes = resTIMER3;
             }
             break;
         default:
@@ -145,10 +116,9 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
     if (configureResource) { // first time configuring peripheral
         _hRes->timer              = timer;
         _hRes->frequency          = frequency;
-        _hRes->maxValue           = maxValue;
         _hRes->configuredChannels = 0;
 
-        if (frequency == 0 || maxValue == 0) {
+        if (frequency == 0) {
             _hRes = 0;
             ERROR("Invalid timer frequency and/or maxValue");
             return;
@@ -157,22 +127,14 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
         ConfigureTimerPeripheral();
     }
 
-    // Ensure that frequency and maxValue matches
-    if (!(frequency == 0 && maxValue == 0) && // frequency and maxValue undefined
-        (frequency != _hRes->frequency || maxValue != _hRes->maxValue)) {
-        _hRes = 0;
-        ERROR("Timer already configured with different frequency and/or max value");
-        return;
-    }
-
     // Ensure that the channel is valid and not already in use
     if ((channel % 2) != 0 && channel != 1) {
         _hRes = 0;
         ERROR("Only one timer channel can be configured per object");
         return;
     }
-    if (((timer == TIMER1 || timer == TIMER8) && channel > CH4) || // channel 1-4
-        ((timer == TIMER15 || timer == TIMER17) && channel > CH1)) // only channel 1
+    if (((timer == TIMER1) && channel > CH3) || // channel 1-3
+        ((timer == TIMER3) && channel > CH1)) // only channel 1
     {
         _hRes = 0;
         ERROR("Invalid channel for selected timer");
@@ -188,7 +150,7 @@ void PWM::InitPeripheral(timer_t timer, pwm_channel_t channel, uint32_t frequenc
     ConfigureTimerChannel();
 }
 
-void PWM::ConfigureTimerPeripheral()
+void PWM::ConfigureTimerPeripheral(bool fixedPrescaler)
 {
     if (!_hRes)
         return;
@@ -200,31 +162,54 @@ void PWM::ConfigureTimerPeripheral()
     if (_hRes->timer == TIMER1) {
         __HAL_RCC_TIM1_CLK_ENABLE();
         _hRes->handle.Instance = TIM1;
-    } else if (_hRes->timer == TIMER8) {
-        __HAL_RCC_TIM8_CLK_ENABLE();
-        _hRes->handle.Instance = TIM8;
-    } else if (_hRes->timer == TIMER15) {
-        __HAL_RCC_TIM15_CLK_ENABLE();
-        _hRes->handle.Instance = TIM15;
-    } else if (_hRes->timer == TIMER17) {
-        __HAL_RCC_TIM17_CLK_ENABLE();
-        _hRes->handle.Instance = TIM17;
+    } else if (_hRes->timer == TIMER3) {
+        __HAL_RCC_TIM3_CLK_ENABLE();
+        _hRes->handle.Instance = TIM3;
     }
 
     _hRes->handle.Init.CounterMode       = TIM_COUNTERMODE_UP;
     _hRes->handle.Init.RepetitionCounter = 0;
     _hRes->handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
     _hRes->handle.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+
+#if 0
     _hRes->handle.Init.Period = _hRes->maxValue - 1; // this will allow duty cycles (CCR register) to go from 0 to
                                                      // maxValue, with maxValue giving 100% duty cycle (fully on)
 
     // Configure timer prescaler based on desired frequency
     //   fCNT = (ARR+1) * fPERIOD
     //   PSC = (fTIM / fCNT) - 1
-    uint32_t TimerClock = HAL_RCC_GetHCLKFreq();
+    uint32_t TimerClock = HAL_RCC_GetPCLK2Freq();
     // Added prescaler computation as float such that rounding can happen
     float prescaler              = ((float)TimerClock / ((_hRes->handle.Init.Period + 1) * _hRes->frequency)) - 1;
     _hRes->handle.Init.Prescaler = roundf(prescaler);
+#endif
+
+    // Find PWM prescaler to yield the largest possible ARR while still keeping it within 16-bit
+    // Based on "A few useful formulas" from the STM32 Timer slides (PDF)
+    // fPWM = fTIM / ((ARR+1)*(PSC+1))
+    uint32_t TimerClock = HAL_RCC_GetPCLK2Freq();
+    // Start with no prescaler: _PWM_prescaler = PSC+1 = 1
+    uint32_t ARR = 0x10000;
+    if (!fixedPrescaler) {
+        _hRes->handle.Init.Prescaler = 0;
+        while (ARR > 0xFFFF) {
+            _hRes->handle.Init.Prescaler++;
+            // Compute ARR and check value
+            ARR = TimerClock / (_hRes->frequency * _hRes->handle.Init.Prescaler) - 1;
+        }
+    } else {
+        ARR = TimerClock / (_hRes->frequency * _hRes->handle.Init.Prescaler) - 1;
+        if (ARR > 0xFFFF) {
+            return; // error, not possible with this prescaler
+        }
+    }
+    _hRes->handle.Init.Period    = ARR;
+    _hRes->handle.Init.Prescaler = _hRes->handle.Init.Prescaler - 1;
+    _hRes->maxValue = _hRes->handle.Init.Period + 1;
+
+    // Recompute actual frequency
+    _hRes->frequency = TimerClock / ((_hRes->handle.Init.Period + 1) * _hRes->handle.Init.Prescaler);
 
     if (_hRes->handle.Init.Prescaler > 0xFFFF) {
         _hRes = 0;
@@ -267,9 +252,11 @@ void PWM::ConfigureTimerPeripheral()
     sBreakDeadTimeConfig.BreakState       = TIM_BREAK_DISABLE;
     sBreakDeadTimeConfig.BreakPolarity    = TIM_BREAKPOLARITY_HIGH;
     sBreakDeadTimeConfig.BreakFilter      = 0;
+    sBreakDeadTimeConfig.BreakAFMode      = TIM_BREAK_AFMODE_INPUT;
     sBreakDeadTimeConfig.Break2State      = TIM_BREAK2_DISABLE;
     sBreakDeadTimeConfig.Break2Polarity   = TIM_BREAK2POLARITY_HIGH;
     sBreakDeadTimeConfig.Break2Filter     = 0;
+    sBreakDeadTimeConfig.Break2AFMode     = TIM_BREAK_AFMODE_INPUT;
     sBreakDeadTimeConfig.AutomaticOutput  = TIM_AUTOMATICOUTPUT_DISABLE;
     if (HAL_TIMEx_ConfigBreakDeadTime(&_hRes->handle, &sBreakDeadTimeConfig) != HAL_OK) {
         _hRes = 0;
@@ -289,61 +276,37 @@ void PWM::ConfigureTimerGPIO()
     GPIO_InitStruct.Speed            = GPIO_SPEED_FREQ_LOW;
 
     if (_hRes->timer == TIMER1) {
-        GPIO_InitStruct.Alternate = GPIO_AF1_TIM1;
+        GPIO_InitStruct.Alternate = GPIO_AF6_TIM1;
         /**TIM1 GPIO Configuration
-        PE9     ------> TIM1_CH1
-        PE11     ------> TIM1_CH2
-        PE13     ------> TIM1_CH3
+        PA8     ------> TIM1_CH1
+        PA9     ------> TIM1_CH2
+        PA10    ------> TIM1_CH3
         */
-        __HAL_RCC_GPIOE_CLK_ENABLE();
+        __HAL_RCC_GPIOA_CLK_ENABLE();
         if (_channel == CH1)
-            GPIO_InitStruct.Pin = GPIO_PIN_9;
+            GPIO_InitStruct.Pin = GPIO_PIN_8;
         else if (_channel == CH2)
-            GPIO_InitStruct.Pin = GPIO_PIN_11;
+            GPIO_InitStruct.Pin = GPIO_PIN_9;
         else if (_channel == CH3)
-            GPIO_InitStruct.Pin = GPIO_PIN_13;
+            GPIO_InitStruct.Pin = GPIO_PIN_10;
         else
             return;
 
-        HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
         _complementaryOutput = false;
-    } else if (_hRes->timer == TIMER8) {
-        GPIO_InitStruct.Alternate = GPIO_AF3_TIM8;
+    } else if (_hRes->timer == TIMER3) {
+        GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
         /**TIM8 GPIO Configuration
-        PC6     ------> TIM8_CH1
-        PC7     ------> TIM8_CH2
-        PC8     ------> TIM8_CH3
+        PC6     ------> TIM3_CH1
         */
         __HAL_RCC_GPIOC_CLK_ENABLE();
         if (_channel == CH1)
             GPIO_InitStruct.Pin = GPIO_PIN_6;
-        else if (_channel == CH2)
-            GPIO_InitStruct.Pin = GPIO_PIN_7;
-        else if (_channel == CH3)
-            GPIO_InitStruct.Pin = GPIO_PIN_8;
         else
             return;
 
         HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
         _complementaryOutput = false;
-    } else if (_hRes->timer == TIMER15) {
-        GPIO_InitStruct.Alternate = GPIO_AF4_TIM15;
-        /**TIM15 GPIO Configuration
-        PE5     ------> TIM15_CH1
-        */
-        __HAL_RCC_GPIOE_CLK_ENABLE();
-        GPIO_InitStruct.Pin = GPIO_PIN_5;
-        HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-        _complementaryOutput = false;
-    } else if (_hRes->timer == TIMER17) {
-        GPIO_InitStruct.Alternate = GPIO_AF1_TIM17;
-        /**TIM17 GPIO Configuration
-        PB7     ------> TIM17_CH1N
-        */
-        __HAL_RCC_GPIOB_CLK_ENABLE();
-        GPIO_InitStruct.Pin = GPIO_PIN_7;
-        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-        _complementaryOutput = true;
     }
 }
 
@@ -400,6 +363,8 @@ void PWM::ConfigureTimerChannel()
 // Set a duty-cycle value between 0-1, where 0 results in an always LOW signal and 1 results in an always HIGH signal
 void PWM::Set(float value)
 {
+    if (!_hRes)
+        return;
     if (value < 0)
         value = 0.0f;
     if (value > 1)

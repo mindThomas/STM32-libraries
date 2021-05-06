@@ -18,7 +18,7 @@
 
 #include "I2C.hpp"
 
-#include "Priorities.h"
+#include <Priorities.h>
 #include <math.h>
 #include <string.h> // for memset
 

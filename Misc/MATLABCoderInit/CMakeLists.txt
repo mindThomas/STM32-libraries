@@ -1,11 +1,6 @@
-set(LIBRARY_NAME STM32H7_InputCapture)
-set(LIBRARY_DEPENDENCIES
-    HAL::STM32::H7::M7::TIM
-    HAL::STM32::H7::M7::RCC
-    HAL::STM32::H7::M7::GPIO
-    HAL::STM32::H7::M7::CORTEX
-    CMSIS::STM32::H7::M7)
-set(LIBRARY_SOURCES InputCapture.cpp)
+set(LIBRARY_NAME Misc_MATLABCoderInit)
+set(LIBRARY_DEPENDENCIES)
+set(LIBRARY_SOURCES MATLABCoderInit.cpp rtGetInf.cpp rtGetNaN.cpp rt_nonfinite.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 
@@ -15,6 +10,3 @@ target_link_libraries(${LIBRARY_NAME}
                       INTERFACE ${LIBRARY_DEPENDENCIES})
 get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
-
-# Defines STM32H7_INPUTCAPTURE_USE_DEBUG when option is enabled
-add_library_option(${LIBRARY_NAME} DEBUG STM32_DEBUG)

@@ -1,4 +1,4 @@
-set(LIBRARY_NAME STM32H7_SMBUS)
+set(LIBRARY_NAME STM32H7_SMBus)
 set(LIBRARY_DEPENDENCIES
     HAL::STM32::H7::M7::I2C
     HAL::STM32::H7::M7::SMBUS
@@ -12,7 +12,8 @@ message("       -- ${LIBRARY_NAME}")
 
 add_library(${LIBRARY_NAME} INTERFACE)
 target_sources(${LIBRARY_NAME} INTERFACE ${LIBRARY_SOURCES})
-target_link_libraries(${LIBRARY_NAME} INTERFACE ${LIBRARY_DEPENDENCIES})
+target_link_libraries(${LIBRARY_NAME}
+                      INTERFACE ${LIBRARY_DEPENDENCIES})
 get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 

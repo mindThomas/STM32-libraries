@@ -18,7 +18,7 @@
 
 #include "IO.hpp"
 
-#include "Priorities.h"
+#include <Priorities.h>
 
 #ifdef STM32H7_IO_USE_DEBUG
 #include <Debug/Debug.h>

@@ -18,7 +18,7 @@
 
 #include "Timer.hpp"
 #include <Debug/Debug.h>
-#include "Priorities.h"
+#include <Priorities.h>
 #include "stm32f4xx_hal.h"
 #include <cmath>
 #include <string.h> // for memset

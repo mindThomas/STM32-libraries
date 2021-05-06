@@ -56,13 +56,15 @@ function(ADD_LIBRARY_OPTION LIBRARY OPTION EXTRA_DEPENDENCIES)
     #endif()
     #set_property(GLOBAL APPEND PROPERTY LIBRARY_OPTIONS "${LIBRARY}_USE_${OPTION}")
 
+    string(TOUPPER ${LIBRARY} LIBRARY_U)
+
     target_compile_definitions(
         ${LIBRARY} INTERFACE
-        $<$<IN_LIST:${LIBRARY}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY}_USE_${OPTION}">)
+        $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY_U}_USE_${OPTION}">)
 
     target_link_libraries(
         ${LIBRARY}
-        INTERFACE $<$<IN_LIST:${LIBRARY}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:${EXTRA_DEPENDENCIES}>)
+        INTERFACE $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:${EXTRA_DEPENDENCIES}>)
 endfunction()
 
 function(ENABLE_OPTION TARGET LIBRARY OPTION)
@@ -79,9 +81,11 @@ function(ENABLE_OPTION TARGET LIBRARY OPTION)
     # if(NOT TARGET ${TARGET})
     #     message(FATAL_ERROR "Target ${TARGET} not found")
     # endif()
-    message(STATUS "Adding compile definition: ${LIBRARY}_USE_${OPTION}")
-    #target_compile_definitions(${TARGET} PUBLIC ${LIBRARY}_USE_${OPTION})
-    set_property(TARGET ${TARGET} APPEND PROPERTY LIBRARY_OPTIONS "${LIBRARY}_USE_${OPTION}")
+    string(TOUPPER ${LIBRARY} LIBRARY_U)
+
+    message(STATUS "Adding compile definition: ${LIBRARY_U}_USE_${OPTION}")
+    #target_compile_definitions(${TARGET} PUBLIC ${LIBRARY_U}_USE_${OPTION})
+    set_property(TARGET ${TARGET} APPEND PROPERTY LIBRARY_OPTIONS "${LIBRARY_U}_USE_${OPTION}")
 
     # For debugging
     if(NOT TARGET print_options_${TARGET})
@@ -91,9 +95,10 @@ function(ENABLE_OPTION TARGET LIBRARY OPTION)
 endfunction()
 
 function(ADD_CONFIGURABLE_LIBRARY_OPTION LIBRARY OPTION)
+    string(TOUPPER ${LIBRARY} LIBRARY_U)
     target_compile_definitions(
         ${LIBRARY} INTERFACE
-        $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY}_${OPTION}=.*$>)
+        $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY_U}_${OPTION}=.*$>)
 endfunction()
 
 function(SET_CONFIGURABLE_OPTION TARGET LIBRARY OPTION VALUE)
@@ -122,10 +127,12 @@ endmacro()
 
 cmake_directories(SUBDIRS)
 
-message(STATUS "Loaded directories:")
+message(STATUS "Loaded STM32-libraries:")
 foreach(subdir ${SUBDIRS})
     set(LIBRARY_NAME "")
-    message(STATUS "   " ${subdir})
+    if(${VERBOSE})
+        message(STATUS "   " ${subdir})
+    endif()
     add_subdirectory(${subdir})
     if(TARGET ${LIBRARY_NAME})
         target_include_directories(${LIBRARY_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)

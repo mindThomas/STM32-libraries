@@ -1,4 +1,4 @@
-/* Copyright (C) 2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2020- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -17,10 +17,18 @@
  */
 
 #include "SyncedPWMADC.hpp"
-#include <Debug/Debug.h>
-#include "stm32g4xx_hal.h"
+
 #include <math.h>   // for roundf
 #include <string.h> // for memset
+
+#include <IO/IO.hpp>
+#include <Encoder/Encoder.hpp>
+
+#ifdef STM32G4_SYNCEDPWMADC_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 #ifndef USE_FREERTOS
 #include <malloc.h>
@@ -1174,7 +1182,7 @@ void        SyncedPWMADC::SamplingCompleted(SyncedPWMADC* obj, uint8_t ADC)
             }
 
 #ifdef USE_FREERTOS
-            CombinedSample_t CombinedSample   = {0};
+            CombinedSample_t CombinedSample{};
             CombinedSample.Timestamp          = timestamp;
             CombinedSample.PWM_Frequency      = obj->timerSettingsCurrent.Frequency;
             CombinedSample.TimerMax           = obj->timerSettingsCurrent.TimerMax;
@@ -1199,7 +1207,7 @@ void        SyncedPWMADC::SamplingCompleted(SyncedPWMADC* obj, uint8_t ADC)
             if (obj->Samples.Encoder.Updated)
                 CombinedSample.Encoder = obj->Samples.Encoder.Value;
 
-            if (uxQueueSpacesAvailableFromISR(obj->SampleQueue) > 0) { // check for space in queue
+            if (!xQueueIsQueueFullFromISR(obj->SampleQueue)) { // check for space in queue
                 xQueueSendFromISR(obj->SampleQueue, (void*)&CombinedSample, &xHigherPriorityTaskWoken);
 
                 if (obj->_sampleAddedToQueue)

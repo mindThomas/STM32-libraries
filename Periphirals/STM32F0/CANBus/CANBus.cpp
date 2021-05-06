@@ -20,7 +20,7 @@
 #include "stm32f0xx_hal_timebase_tim.h" // for HAL_GetHighResTick()
 
 #include <Debug/Debug.h>
-#include "Priorities.h"
+#include <Priorities.h>
 #include <math.h>
 #include <string.h> // for memset
 

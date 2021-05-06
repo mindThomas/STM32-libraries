@@ -18,7 +18,7 @@
 
 #include "SPI.hpp"
 
-#include "Priorities.h"
+#include <Priorities.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h> // for memset

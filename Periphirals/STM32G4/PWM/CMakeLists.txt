@@ -1,11 +1,12 @@
-set(LIBRARY_NAME STM32H7_InputCapture)
+set(LIBRARY_NAME STM32G4_PWM)
 set(LIBRARY_DEPENDENCIES
-    HAL::STM32::H7::M7::TIM
-    HAL::STM32::H7::M7::RCC
-    HAL::STM32::H7::M7::GPIO
-    HAL::STM32::H7::M7::CORTEX
-    CMSIS::STM32::H7::M7)
-set(LIBRARY_SOURCES InputCapture.cpp)
+    HAL::STM32::G4::TIM
+    HAL::STM32::G4::TIMEx
+    HAL::STM32::G4::RCC
+    HAL::STM32::G4::GPIO
+    HAL::STM32::G4::CORTEX
+    CMSIS::STM32::G4)
+set(LIBRARY_SOURCES PWM.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 
@@ -16,5 +17,5 @@ target_link_libraries(${LIBRARY_NAME}
 get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
-# Defines STM32H7_INPUTCAPTURE_USE_DEBUG when option is enabled
+# Defines STM32G4_PWM_USE_DEBUG when option is enabled
 add_library_option(${LIBRARY_NAME} DEBUG STM32_DEBUG)
