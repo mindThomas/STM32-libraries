@@ -20,33 +20,39 @@
 #add_definitions(-std=c++11)
 set(CMAKE_CXX_STANDARD 11 PARENT_SCOPE)
 set(CMAKE_CXX_STANDARD_REQUIRED ON PARENT_SCOPE)
-set(CMAKE_CXX_EXTENSIONS OFF PARENT_SCOPE) # use -std=c++14 instead of -std=gnu++14
+set(CMAKE_CXX_EXTENSIONS OFF PARENT_SCOPE)
+# use -std=c++14 instead of -std=gnu++14
 
 # Print project compile flags
 message(STATUS "Default Compile flags [current build: ${CMAKE_BUILD_TYPE}]")
 message(STATUS "  CMAKE_C_FLAGS_DEBUG: ${CMAKE_C_FLAGS_DEBUG}")
 message(STATUS "  CMAKE_C_FLAGS_RELEASE: ${CMAKE_C_FLAGS_RELEASE}")
-message(STATUS "  CMAKE_C_FLAGS_RELWITHDEBINFO: ${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+message(
+    STATUS "  CMAKE_C_FLAGS_RELWITHDEBINFO: ${CMAKE_C_FLAGS_RELWITHDEBINFO}")
 message(STATUS "  CMAKE_C_FLAGS_MINSIZEREL: ${CMAKE_C_FLAGS_MINSIZEREL}")
 
 message(STATUS "  CMAKE_CXX_FLAGS_DEBUG: ${CMAKE_CXX_FLAGS_DEBUG}")
 message(STATUS "  CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")
-message(STATUS "  CMAKE_CXX_FLAGS_RELWITHDEBINFO: ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+message(
+    STATUS "  CMAKE_CXX_FLAGS_RELWITHDEBINFO: ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}"
+    )
 message(STATUS "  CMAKE_CXX_FLAGS_MINSIZEREL: ${CMAKE_CXX_FLAGS_MINSIZEREL}")
 message(STATUS "")
 
 # Make a compiler flag for the current source folder path
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__SOURCE_FOLDER__='\"$(dir $(abspath $<))\"'")
+set(CMAKE_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} -D__SOURCE_FOLDER__='\"$(dir $(abspath $<))\"'")
 
 define_property(TARGET
                 PROPERTY LIBRARY_OPTIONS
                 BRIEF_DOCS "List of options for a particular library"
                 FULL_DOCS "List of options for a particular library")
 
-define_property(TARGET
-                PROPERTY CONFIGURABLE_LIBRARY_OPTIONS
-                BRIEF_DOCS "List of configurable options for a particular library"
-                FULL_DOCS "List of configurable options for a particular library")
+define_property(
+    TARGET
+    PROPERTY CONFIGURABLE_LIBRARY_OPTIONS
+    BRIEF_DOCS "List of configurable options for a particular library"
+    FULL_DOCS "List of configurable options for a particular library")
 
 function(ADD_LIBRARY_OPTION LIBRARY OPTION EXTRA_DEPENDENCIES)
     #if(${LIBRARY}_OPTIONS)
@@ -60,11 +66,14 @@ function(ADD_LIBRARY_OPTION LIBRARY OPTION EXTRA_DEPENDENCIES)
 
     target_compile_definitions(
         ${LIBRARY} INTERFACE
-        $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY_U}_USE_${OPTION}">)
+        $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY_U}_USE_${OPTION}">
+        )
 
     target_link_libraries(
         ${LIBRARY}
-        INTERFACE $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:${EXTRA_DEPENDENCIES}>)
+        INTERFACE
+            $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:${EXTRA_DEPENDENCIES}>
+        )
 endfunction()
 
 function(ENABLE_OPTION TARGET LIBRARY OPTION)
@@ -85,12 +94,16 @@ function(ENABLE_OPTION TARGET LIBRARY OPTION)
 
     message(STATUS "Adding compile definition: ${LIBRARY_U}_USE_${OPTION}")
     #target_compile_definitions(${TARGET} PUBLIC ${LIBRARY_U}_USE_${OPTION})
-    set_property(TARGET ${TARGET} APPEND PROPERTY LIBRARY_OPTIONS "${LIBRARY_U}_USE_${OPTION}")
+    set_property(TARGET ${TARGET}
+                 APPEND
+                 PROPERTY LIBRARY_OPTIONS "${LIBRARY_U}_USE_${OPTION}")
 
     # For debugging
     if(NOT TARGET print_options_${TARGET})
-        add_custom_target(print_options_${TARGET}
-                          COMMAND ${CMAKE_COMMAND} -E echo '$<TARGET_PROPERTY:${TARGET},LIBRARY_OPTIONS>')
+        add_custom_target(
+            print_options_${TARGET}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    '$<TARGET_PROPERTY:${TARGET},LIBRARY_OPTIONS>')
     endif()
 endfunction()
 
@@ -98,17 +111,23 @@ function(ADD_CONFIGURABLE_LIBRARY_OPTION LIBRARY OPTION)
     string(TOUPPER ${LIBRARY} LIBRARY_U)
     target_compile_definitions(
         ${LIBRARY} INTERFACE
-        $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY_U}_${OPTION}=.*$>)
+        $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY_U}_${OPTION}=.*$>
+        )
 endfunction()
 
 function(SET_CONFIGURABLE_OPTION TARGET LIBRARY OPTION VALUE)
     message(STATUS "Adding compile definition: ${LIBRARY}_${OPTION}=${VALUE}")
-    set_property(TARGET ${TARGET} APPEND PROPERTY CONFIGURABLE_LIBRARY_OPTIONS "${LIBRARY}_${OPTION}=${VALUE}")
+    set_property(TARGET ${TARGET}
+                 APPEND
+                 PROPERTY CONFIGURABLE_LIBRARY_OPTIONS
+                          "${LIBRARY}_${OPTION}=${VALUE}")
 
     # For debugging
     if(NOT TARGET print_configurable_options_${TARGET})
-        add_custom_target(print_configurable_options_${TARGET}
-                          COMMAND ${CMAKE_COMMAND} -E echo '$<TARGET_PROPERTY:${TARGET},CONFIGURABLE_LIBRARY_OPTIONS>')
+        add_custom_target(
+            print_configurable_options_${TARGET}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    '$<TARGET_PROPERTY:${TARGET},CONFIGURABLE_LIBRARY_OPTIONS>')
     endif()
 endfunction()
 
@@ -135,7 +154,9 @@ foreach(subdir ${SUBDIRS})
     endif()
     add_subdirectory(${subdir})
     if(TARGET ${LIBRARY_NAME})
-        target_include_directories(${LIBRARY_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        target_include_directories(
+            ${LIBRARY_NAME}
+            INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     endif()
 endforeach()
 message(STATUS "")

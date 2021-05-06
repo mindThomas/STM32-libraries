@@ -1,5 +1,5 @@
 # How wide to allow formatted cmake files
-line_width = 120
+line_width = 80
 
 # How many spaces to tab for indent
 tab_size = 4
@@ -20,7 +20,7 @@ separate_fn_name_with_space = False
 dangle_parens = False
 
 # Wrapping
-always_wrap = ['find_package', 'add_executable', 'target_link_libraries']
+#always_wrap = ['find_package', 'add_executable', 'target_link_libraries']
 
 # What character to use for bulleted lists
 bullet_char = '-'

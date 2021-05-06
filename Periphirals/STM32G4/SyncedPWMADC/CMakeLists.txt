@@ -12,14 +12,16 @@ set(LIBRARY_DEPENDENCIES
     CMSIS::STM32::G4
     STM32G4_IO
     STM32G4_Encoder)
-set(LIBRARY_SOURCES SyncedPWMADC.cpp SyncedPWMADC_ADC.cpp SyncedPWMADC_Timer.cpp)
+set(LIBRARY_SOURCES
+    SyncedPWMADC.cpp
+    SyncedPWMADC_ADC.cpp
+    SyncedPWMADC_Timer.cpp)
 
 message("       -- ${LIBRARY_NAME}")
 
 add_library(${LIBRARY_NAME} INTERFACE)
 target_sources(${LIBRARY_NAME} INTERFACE ${LIBRARY_SOURCES})
-target_link_libraries(${LIBRARY_NAME}
-                      INTERFACE ${LIBRARY_DEPENDENCIES})
+target_link_libraries(${LIBRARY_NAME} INTERFACE ${LIBRARY_DEPENDENCIES})
 get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
