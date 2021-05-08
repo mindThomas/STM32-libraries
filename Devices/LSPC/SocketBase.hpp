@@ -1,5 +1,4 @@
-#ifndef LSPC_SOCKETBASE_HPP
-#define LSPC_SOCKETBASE_HPP
+#pragma once
 
 #include "Packet.hpp"
 #include "Serializable.hpp"
@@ -150,5 +149,3 @@ public:
 };
 
 } // namespace lspc
-
-#endif // LSPC_SOCKETBASE_HPP

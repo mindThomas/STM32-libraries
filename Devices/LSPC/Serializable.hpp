@@ -1,5 +1,4 @@
-#ifndef LSPC_SERIALIZABLE_HPP
-#define LSPC_SERIALIZABLE_HPP
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -14,5 +13,3 @@ public:
 };
 
 } // namespace lspc
-
-#endif // LSPC_SERIALIZABLE_HPP

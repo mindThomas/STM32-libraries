@@ -27,7 +27,7 @@ get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
 # Defines STM32H7_USBCDC_USE_DEBUG when option is enabled
-add_library_option(${LIBRARY_NAME} DEBUG STM32_DEBUG)
+add_library_option(${LIBRARY_NAME} DEBUG STM32_Debug)
 
 # Define STM32H7_USBCDC_DEVICE_NAME as configurable option
 add_configurable_library_option(${LIBRARY_NAME} DEVICE_NAME)

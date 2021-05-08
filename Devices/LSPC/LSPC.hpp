@@ -1,17 +1,46 @@
-#ifndef LSPC_TEMPLATED_HPP
-#define LSPC_TEMPLATED_HPP
+/* Copyright (C) 2021- Thomas Jespersen, TKJ Electronics. All rights reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the MIT License
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the MIT License for further details.
+ *
+ * Contact information
+ * ------------------------------------------
+ * Thomas Jespersen, TKJ Electronics
+ * Web      :  http://www.tkjelectronics.dk
+ * e-mail   :  thomasj@tkjelectronics.dk
+ * ------------------------------------------
+ */
 
-#include "Debug.h"
-#include "Packet.hpp"
-#include "Serializable.hpp"
+#pragma once
+
 #include "SocketBase.hpp"
-#include "cmsis_os.h" // for task creation
-#if defined(LSPC_USB)
-#include "USBCDC.hpp"
-#elif defined(LSPC_UART)
-#include "UART.hpp"
+
+#include <MessageTypes.h>
+
+// FreeRTOS for task creation
+#ifdef USE_FREERTOS_CMSIS
+#include "cmsis_os.h"
+#elif defined(USE_FREERTOS)
+#include "FreeRTOS.h"
+#else
+#error "LSPC requires FreeRTOS"
 #endif
-#include "MessageTypes.h"
+
+#if defined(STM32_LSPC_USE_USB)
+//#include <USBCDC/USBCDC.hpp>
+#include <UART/UART.hpp>
+#elif defined(STM32_LSPC_USE_UART)
+#include <UART/UART.hpp>
+#else
+#error "LSPC interface undefined"
+#endif
+
+#include <vector>
 
 #define LSPC_MAXIMUM_PACKAGE_LENGTH 250
 #define LSPC_ASYNCHRONOUS_QUEUE_LENGTH 50 // maximum 50 asynchronous packages in queue
@@ -30,23 +59,7 @@ template<class COM>
 class Socket : public SocketBase
 {
 public:
-    Socket(COM* com, uint32_t processingTaskPriority, uint32_t transmitterTaskPriority)
-        : com(com)
-        , _processingTaskHandle(0)
-        , _transmitterTaskHandle(0)
-    {
-        _TXqueue = xQueueCreate(LSPC_ASYNCHRONOUS_QUEUE_LENGTH, sizeof(LSPC_Async_Package_t));
-        if (_TXqueue == NULL) {
-            ERROR("Could not create asynchronous LSPC TX queue");
-            return;
-        }
-        vQueueAddToRegistry(_TXqueue, "LSPC TX");
-
-        xTaskCreate(Socket::ProcessingThread, (char*)"LSPC processing", LSPC_RX_PROCESSING_THREAD_STACK_SIZE,
-                    (void*)this, processingTaskPriority, &_processingTaskHandle);
-        xTaskCreate(Socket::TransmitterThread, (char*)"LSPC transmitter", LSPC_TX_TRANSMITTER_THREAD_STACK_SIZE,
-                    (void*)this, transmitterTaskPriority, &_transmitterTaskHandle);
-    };
+    Socket(COM* com, uint32_t processingTaskPriority, uint32_t transmitterTaskPriority);
 
 private:
     using SocketBase::send;
@@ -59,104 +72,22 @@ private:
     // @param payload A vector with the serialized payload to be sent.
     //
     // @return True if the packet was sent.
-    bool send(uint8_t type, const std::vector<uint8_t>& payload) override
-    {
-        Packet outPacket(type, payload);
-
-        // Send it
-        if (outPacket.encodedDataSize() == com->Write(outPacket.encodedDataPtr(), outPacket.encodedDataSize()))
-            return true;
-        else
-            return false;
-    };
+    bool send(uint8_t type, const std::vector<uint8_t>& payload) override;
 
     // Process incoming data on serial link
     //
     // @brief Reads the serial buffer and dispatches the received payload to the
     // relevant message handling callback function.
-    void processSerial()
-    {
-        int16_t readChar = 0;
-        while (com->Available()) {
-            readChar = com->Read();
-            if (readChar >= 0)
-                processIncomingByte(readChar);
-        }
-        return;
-    };
+    void processSerial();
 
 public:
-    bool TransmitAsync(uint8_t type, const uint8_t* payload, uint16_t payloadLength)
-    {
-        LSPC_Async_Package_t package;
-        if (payloadLength > LSPC_MAXIMUM_PACKAGE_LENGTH)
-            return false; // payload size is too big
-        if (uxQueueSpacesAvailable(_TXqueue) == 0) {
-            return false; // no space in queue
-        }
+    bool TransmitAsync(uint8_t type, const uint8_t* payload, uint16_t payloadLength);
 
-        if (xPortGetFreeHeapSize() <= 3 * payloadLength)
-            return false; // not enough space for payload
-
-        package.type       = type;
-        package.payloadPtr = new std::vector<uint8_t>(payloadLength);
-        if (!package.payloadPtr)
-            return false;
-        memcpy(package.payloadPtr->data(), payload, payloadLength);
-        if (xQueueSend(_TXqueue, (void*)&package, (TickType_t)0) != pdTRUE) {
-            delete (package.payloadPtr); // could not add package to queue, probably because it is full
-            return false;
-        }
-
-        return true;
-    }
-
-    bool Connected(void) { return com->Connected(); }
+    bool Connected(void);
 
 private:
-    static void ProcessingThread(void* pvParameters)
-    {
-        Socket<COM>* lspc = (Socket<COM>*)pvParameters;
-
-        lspc->incoming_data.reserve(LSPC_MAXIMUM_PACKAGE_LENGTH);
-
-        // LSPC incoming data processing loop
-        while (1) {
-            if (lspc->com->WaitForNewData(portMAX_DELAY))
-                lspc->processSerial();
-        }
-    }
-
-    static void TransmitterThread(void* pvParameters)
-    {
-        Socket<COM>*         lspc = (Socket<COM>*)pvParameters;
-        LSPC_Async_Package_t package;
-
-        while (1) {
-            if (lspc->Connected()) {
-                // LSPC outgoing (transmission) data loop
-                while (lspc->Connected()) {
-                    if (xQueueReceive(lspc->_TXqueue, &package, (TickType_t)portMAX_DELAY) == pdPASS) {
-                        // Send it if possible
-                        Packet* outPacket = new Packet(package.type, *package.payloadPtr);
-                        if (!outPacket)
-                            continue;
-
-                        if (outPacket->encodedDataSize() ==
-                            lspc->com->WriteBlocking(outPacket->encodedDataPtr(), outPacket->encodedDataSize())) {
-                            delete (package.payloadPtr); // clear memory used for payload data
-                        } else {                         // if not, re-add it to the queue
-                            // xQueueSend(lspc->_TXqueue, (void *)&package, (TickType_t) 1); // re-add it to the queue
-                            // is probably not a good idea
-                            delete (package.payloadPtr); // clear memory used for payload data
-                        }
-                        delete (outPacket);
-                    }
-                }
-            }
-            osDelay(100);
-        }
-    }
+    static void ProcessingThread(void* pvParameters);
+    static void TransmitterThread(void* pvParameters);
 
 public:
     COM* com;
@@ -169,10 +100,8 @@ private:
 
 } // namespace lspc
 
-#if defined(LSPC_USB)
-using LSPC = lspc::Socket<USBCDC>; // define whether to use USB or UART
-#elif defined(LSPC_UART)
+#if defined(STM32_LSPC_USE_USB)
+using LSPC = lspc::Socket<UART>; // define whether to use USB or UART
+#elif defined(STM32_LSPC_USE_UART)
 using LSPC = lspc::Socket<UART>; // define whether to use USB or UART
 #endif
-
-#endif // LSPC_TEMPLATED_HPP

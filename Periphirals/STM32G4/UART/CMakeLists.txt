@@ -1,6 +1,7 @@
 set(LIBRARY_NAME STM32G4_UART)
 set(LIBRARY_DEPENDENCIES
     HAL::STM32::G4::UART
+    HAL::STM32::G4::UARTEx
     HAL::STM32::G4::DMA
     HAL::STM32::G4::RCC
     HAL::STM32::G4::RCCEx
@@ -18,4 +19,4 @@ get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
 # Defines STM32G4_UART_USE_DEBUG when option is enabled
-add_library_option(${LIBRARY_NAME} DEBUG STM32_DEBUG)
+add_library_option(${LIBRARY_NAME} DEBUG STM32_Debug)

@@ -15,4 +15,4 @@ target_link_libraries(${LIBRARY_NAME} INTERFACE ${LIBRARY_DEPENDENCIES})
 get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
-add_library_option(${LIBRARY_NAME} DEBUG STM32_DEBUG)
+add_library_option(${LIBRARY_NAME} DEBUG STM32_Debug)

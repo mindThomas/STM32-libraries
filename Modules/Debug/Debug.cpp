@@ -29,12 +29,10 @@ void HAL_Delay(uint32_t Delay); // forward declaration
 #define delay(x) HAL_Delay(x)
 #endif
 
-#ifdef DEBUG_PRINTF_ENABLED
-#ifdef DEBUG_PRINTF_WITHOUT_LSPC
-#include "UART.h"
-#else
-#include "LSPC.hpp"
-#endif
+#ifdef STM32_DEBUG_USE_UART
+#include <UART/UART.hpp>
+#elif defined(STM32_DEBUG_USE_LSPC)
+#include <LSPC/LSPC.hpp>
 #endif
 
 bool  Debug::handleCreated = false;
@@ -59,18 +57,14 @@ Debug::Debug()
 
 Debug::~Debug() {}
 
+#ifdef DEBUG_PRINT_ENABLED
 void Debug::AssignDebugCOM(void* com)
 {
     debugHandle.com_ = com;
-
-#ifdef DEBUG_PRINTF_ENABLED
     if (!com) {
         ERROR("COM object does not exist");
         return;
     }
-#endif
-
-#ifdef DEBUG_PRINTF_ENABLED
     debugHandle.currentBufferLocation_ = 0;
     memset(debugHandle.messageBuffer_, 0, MAX_DEBUG_TEXT_LENGTH);
 #ifdef USE_FREERTOS
@@ -82,17 +76,17 @@ void Debug::AssignDebugCOM(void* com)
     vQueueAddToRegistry(debugHandle.mutex_, "Debug mutex");
     xSemaphoreGive(debugHandle.mutex_); // give the semaphore the first time
 
-#ifndef DEBUG_PRINTF_WITHOUT_LSPC
+#ifdef STM32_DEBUG_USE_LSPC
     xTaskCreate(Debug::PackageGeneratorThread, (char*)"Debug transmitter", debugHandle.THREAD_STACK_SIZE,
                 (void*)&debugHandle, debugHandle.THREAD_PRIORITY, &debugHandle._TaskHandle);
 #endif
 #endif
-#endif
 }
+#endif
 
-#ifdef DEBUG_PRINTF_ENABLED
+#ifdef DEBUG_PRINT_ENABLED
 #ifdef USE_FREERTOS
-#ifndef DEBUG_PRINTF_WITHOUT_LSPC
+#ifdef STM32_DEBUG_USE_LSPC
 void Debug::PackageGeneratorThread(void* pvParameters)
 {
     Debug* debug = (Debug*)pvParameters;
@@ -115,10 +109,10 @@ void Debug::PackageGeneratorThread(void* pvParameters)
 
 void Debug::Message(const char* msg)
 {
-#ifdef DEBUG_PRINTF_ENABLED
+#ifdef DEBUG_PRINT_ENABLED
     if (!debugHandle.com_)
         return;
-#ifdef DEBUG_PRINTF_WITHOUT_LSPC
+#ifndef STM32_DEBUG_USE_LSPC
 #ifdef USE_FREERTOS
     xSemaphoreTake(debugHandle.mutex_, (TickType_t)portMAX_DELAY); // take debug mutex
 #endif
@@ -185,20 +179,16 @@ void Debug::Message(std::string msg)
     Message("\n");
 }
 
-void Debug::Message(const char* functionName, const char* msg)
+void Debug::Message(const char* type, const char* msg)
 {
-    Message("[");
-    Message(functionName);
-    Message("] ");
+    Message(type);
     Message(msg);
     Message("\n");
 }
 
-void Debug::Message(const char* functionName, std::string msg)
+void Debug::Message(const char* type, std::string msg)
 {
-    Message("[");
-    Message(functionName);
-    Message("] ");
+    Message(type);
     Message(msg.c_str());
     Message("\n");
 }
@@ -215,10 +205,21 @@ void Debug::Message(const char* type, const char* functionName, const char* msg)
 
 void Debug::Message(std::string type, const char* functionName, std::string msg)
 {
+    Message(type.c_str());
     Message("[");
     Message(functionName);
     Message("] ");
     Message(msg.c_str());
+    Message("\n");
+}
+
+void Debug::DebugMessage(const char * filePath, const char * lineNumber, const char * msg)
+{
+    Message("[");
+    Message(filePath);
+    Message(lineNumber);
+    Message("] ");
+    Message(msg);
     Message("\n");
 }
 
@@ -227,14 +228,14 @@ void Debug::print(const char* msg)
     Message(msg);
 }
 
+#ifdef DEBUG_PRINTF_ENABLED
 void Debug::printf(const char* msgFmt, ...)
 {
-#ifdef DEBUG_PRINTF_ENABLED
     va_list args;
 
     if (!debugHandle.com_)
         return;
-#ifndef DEBUG_PRINTF_WITHOUT_LSPC
+#ifdef STM32_DEBUG_USE_LSPC
     if (!((LSPC*)debugHandle.com_)->Connected())
         return;
 #endif
@@ -252,15 +253,26 @@ void Debug::printf(const char* msgFmt, ...)
     vPortFree(strBuf);
 
     va_end(args);
-#endif
 }
+#endif
 
-void Debug::Error(const char* type, const char* functionName, const char* msg)
+
+void Debug::Error(const char * filePath, const char * lineNumber, const char * msg)
 {
     // At errors do not continue current task/thread but print instead the error message repeatedly
     __asm__("BKPT");
     while (1) {
-        Debug::Message(type, functionName, msg);
+        Debug::DebugMessage(filePath, lineNumber, msg);
+        delay(500);
+    }
+}
+
+void Debug::Error(const char* type, const char* msg)
+{
+    // At errors do not continue current task/thread but print instead the error message repeatedly
+    __asm__("BKPT");
+    while (1) {
+        Debug::Message(type, msg);
         delay(500);
     }
 }

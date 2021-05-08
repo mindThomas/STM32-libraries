@@ -16,8 +16,7 @@
  * ------------------------------------------
  */
  
-#ifndef PERIPHIRALS_IO_H
-#define PERIPHIRALS_IO_H
+#pragma once
 
 #include <stm32g4xx_hal.h>
 #include <stm32g4xx_hal_gpio.h>
@@ -92,6 +91,3 @@ class IO
 	public:
 		static void InterruptHandler(IO * io);
 };
-	
-	
-#endif

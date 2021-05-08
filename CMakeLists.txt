@@ -63,16 +63,27 @@ function(ADD_LIBRARY_OPTION LIBRARY OPTION EXTRA_DEPENDENCIES)
     #set_property(GLOBAL APPEND PROPERTY LIBRARY_OPTIONS "${LIBRARY}_USE_${OPTION}")
 
     string(TOUPPER ${LIBRARY} LIBRARY_U)
+    string(TOUPPER ${OPTION} OPTION_U)
 
     target_compile_definitions(
         ${LIBRARY} INTERFACE
-        $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY_U}_USE_${OPTION}">
+        $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION_U},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY_U}_USE_${OPTION_U}">
         )
 
     target_link_libraries(
         ${LIBRARY}
         INTERFACE
             $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:${EXTRA_DEPENDENCIES}>
+        )
+endfunction()
+
+function(ADD_LIBRARY_OPTION LIBRARY OPTION)
+    string(TOUPPER ${LIBRARY} LIBRARY_U)
+    string(TOUPPER ${OPTION} OPTION_U)
+
+    target_compile_definitions(
+        ${LIBRARY} INTERFACE
+        $<$<IN_LIST:${LIBRARY_U}_USE_${OPTION_U},$<TARGET_PROPERTY:LIBRARY_OPTIONS>>:"${LIBRARY_U}_USE_${OPTION_U}">
         )
 endfunction()
 
@@ -91,12 +102,13 @@ function(ENABLE_OPTION TARGET LIBRARY OPTION)
     #     message(FATAL_ERROR "Target ${TARGET} not found")
     # endif()
     string(TOUPPER ${LIBRARY} LIBRARY_U)
+    string(TOUPPER ${OPTION} OPTION_U)
 
-    message(STATUS "Adding compile definition: ${LIBRARY_U}_USE_${OPTION}")
+    message(STATUS "Adding compile definition: ${LIBRARY_U}_USE_${OPTION_U}")
     #target_compile_definitions(${TARGET} PUBLIC ${LIBRARY_U}_USE_${OPTION})
     set_property(TARGET ${TARGET}
                  APPEND
-                 PROPERTY LIBRARY_OPTIONS "${LIBRARY_U}_USE_${OPTION}")
+                 PROPERTY LIBRARY_OPTIONS "${LIBRARY_U}_USE_${OPTION_U}")
 
     # For debugging
     if(NOT TARGET print_options_${TARGET})
@@ -109,18 +121,22 @@ endfunction()
 
 function(ADD_CONFIGURABLE_LIBRARY_OPTION LIBRARY OPTION)
     string(TOUPPER ${LIBRARY} LIBRARY_U)
+    string(TOUPPER ${OPTION} OPTION_U)
     target_compile_definitions(
         ${LIBRARY} INTERFACE
-        $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY_U}_${OPTION}=.*$>
+        $<FILTER:$<TARGET_PROPERTY:CONFIGURABLE_LIBRARY_OPTIONS>,INCLUDE,^${LIBRARY_U}_${OPTION_U}=.*$>
         )
 endfunction()
 
 function(SET_CONFIGURABLE_OPTION TARGET LIBRARY OPTION VALUE)
-    message(STATUS "Adding compile definition: ${LIBRARY}_${OPTION}=${VALUE}")
+    string(TOUPPER ${LIBRARY} LIBRARY_U)
+    string(TOUPPER ${OPTION} OPTION_U)
+    message(
+        STATUS "Adding compile definition: ${LIBRARY_U}_${OPTION_U}=${VALUE}")
     set_property(TARGET ${TARGET}
                  APPEND
                  PROPERTY CONFIGURABLE_LIBRARY_OPTIONS
-                          "${LIBRARY}_${OPTION}=${VALUE}")
+                          "${LIBRARY_U}_${OPTION_U}=${VALUE}")
 
     # For debugging
     if(NOT TARGET print_configurable_options_${TARGET})

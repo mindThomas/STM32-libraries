@@ -35,10 +35,29 @@
 #include "semphr.h"
 #endif
 
+#if defined(STM32_DEBUG_USE_UART) || defined(STM32_DEBUG_USE_LSPC)
+#define DEBUG_PRINT_ENABLED
+#endif
+
+#if defined(STM32_DEBUG_USE_PRINTF) && defined(DEBUG_PRINT_ENABLED)
+#define DEBUG_PRINTF_ENABLED
+#endif
+
 #include <Priorities.h>
 
-#define DEBUG(msg)	Debug::Message("DEBUG: ", __PRETTY_FUNCTION__, msg)
-#define ERROR(msg)	Debug::Error("ERROR: ", __PRETTY_FUNCTION__, msg)
+#define STRINGIFY_(x) #x  // turn the exact input argument string (code string) into a C string (const char *)
+#define STRINGIFY(x) STRINGIFY_(x)  // turn the input variable content into a C string (const char *)
+#define TOSTRING(x) std::string(STRINGIFY(x))
+#define CONCAT_VARIABLES_(x, y) x##y
+#define CONCAT_VARIABLES(x, y) CONCAT_VARIABLES_(x, y)
+
+#define DEBUG_STRRCHR(str, sep) strrchr(str, sep)
+#define FILE_BASENAME(file) DEBUG_STRRCHR("/" file, '/') + 1 // 1 indexed instead of 0 indexed
+
+#define DEBUG(msg) Debug::DebugMessage(FILE_BASENAME(__FILE__), ":" STRINGIFY(__LINE__), msg)
+#define ERROR(msg) Debug::Error(FILE_BASENAME(__FILE__), ":" STRINGIFY(__LINE__), "ERROR: " msg)
+//#define DEBUG(msg) Debug::Message("[Debug] " __FILE__ ":" STRINGIFY(__LINE__) " ", __PRETTY_FUNCTION__, msg)
+//#define ERROR(msg) Debug::Error("[Error] " __FILE__ ":" STRINGIFY(__LINE__) " ", __PRETTY_FUNCTION__, msg)
 
 #define MAX_DEBUG_TEXT_LENGTH	210 // LSPC_MAXIMUM_PACKAGE_LENGTH
 
@@ -51,17 +70,26 @@ class Debug
 	public:
 		Debug();
 		~Debug();
-	
+
+#ifdef DEBUG_PRINT_ENABLED
 		static void AssignDebugCOM(void * com);
+#endif
+
+        static void DebugMessage(const char * filePath, const char * lineNumber, const char * msg);
+
 		static void Message(const char * type, const char * functionName, const char * msg);
 		static void Message(std::string type, const char * functionName, std::string msg);
-		static void Message(const char * functionName, const char * msg);
-		static void Message(const char * functionName, std::string msg);
+		static void Message(const char * type, const char * msg);
+		static void Message(const char * type, std::string msg);
 		static void Message(const char * msg);
 		static void Message(std::string msg);
 		static void print(const char * msg);
+
+#ifdef DEBUG_PRINTF_ENABLED
 		static void printf( const char *msgFmt, ... );
-		static void Error(const char * type, const char * functionName, const char * msg);
+#endif
+        static void Error(const char * filePath, const char * lineNumber, const char * msg);
+        static void Error(const char * type, const char * msg);
 		static void SetDebugPin(void * pin);
 		static void Pulse();
 		static void Toggle();
@@ -72,14 +100,14 @@ class Debug
 #endif
 
 	private:
-		void * com_{0}; // LSPC object pointer
+		void * com_{0}; // Interface object pointer
 	#ifdef USE_FREERTOS
 		SemaphoreHandle_t mutex_;
 		TaskHandle_t _TaskHandle;
 	#endif
 		void * debugPulsePin_{0}; // of class IO
 
-	#ifdef DEBUG_PRINTF_ENABLED
+	#ifdef DEBUG_PRINT_ENABLED
 		char messageBuffer_[MAX_DEBUG_TEXT_LENGTH];
 		uint16_t currentBufferLocation_;
 	#endif

@@ -1,7 +1,7 @@
-set(LIBRARY_NAME STM32_Debug)
+set(LIBRARY_NAME STM32_LSPC)
 set(LIBRARY_DEPENDENCIES)
 set(PERIPHERAL_DEPENDENCIES IO)
-set(LIBRARY_SOURCES Debug.cpp)
+set(LIBRARY_SOURCES LSPC.cpp Packet.hpp Serializable.hpp SocketBase.hpp)
 
 message("       -- ${LIBRARY_NAME}")
 
@@ -18,8 +18,10 @@ foreach(dependency ${PERIPHERAL_DEPENDENCIES})
         INTERFACE $<TARGET_PROPERTY:DEVICE_FAMILY>_${dependency})
 endforeach()
 
-# Define the type of DEBUG interface for PRINTF support
-# Select using e.g. 'enable_option(your_target STM32_Debug "UART")'
+# Defines STM32_LSPC_USE_DEBUG when option is enabled
+add_library_option(${LIBRARY_NAME} DEBUG STM32_Debug)
+
+# Define the type of LSPC interface
+# Select using e.g. 'enable_option(your_target STM32_LSPC "UART")'
 add_library_option(${LIBRARY_NAME} UART $<TARGET_PROPERTY:DEVICE_FAMILY>_UART)
-add_library_option(${LIBRARY_NAME} LSPC STM32_LSPC)
-add_library_option(${LIBRARY_NAME} PRINTF)
+add_library_option(${LIBRARY_NAME} USB $<TARGET_PROPERTY:DEVICE_FAMILY>_USBCDC)

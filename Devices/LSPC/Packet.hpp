@@ -1,5 +1,4 @@
-#ifndef LSPC_PACKET_HPP
-#define LSPC_PACKET_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -178,5 +177,3 @@ public:
 };
 
 } // namespace lspc
-
-#endif // LSPC_PACKET_HPP
