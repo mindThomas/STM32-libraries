@@ -10,7 +10,7 @@
 
 // Include Files
 #include <math.h>
-//#include "rt_nonfinite.h"
+//#include <MATLABCoderInit/rt_nonfinite.h>
 #include "det2x2.h"
 
 // Function Definitions

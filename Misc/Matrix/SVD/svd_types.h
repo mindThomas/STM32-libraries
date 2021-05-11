@@ -11,7 +11,7 @@
 #define SVD_TYPES_H
 
 // Include Files
-#include "rtwtypes.h"
+#include <MATLABCoderInit/rtwtypes.h>
 #endif
 
 //

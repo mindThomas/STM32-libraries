@@ -10,8 +10,8 @@
 
 // Include Files
 #include "svd_2x2_impl.h"
-#include "rt_nonfinite.h"
-#include "sqrt.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
+#include <Matrix/SVD/sqrt.h>
 #include "svd_2x2.h"
 #include "xaxpy_2x2.h"
 #include "xdotc_2x2.h"

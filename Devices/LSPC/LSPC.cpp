@@ -25,7 +25,7 @@
 
 #include <string.h> // for memcpy
 
-#ifdef STM32_LSPC_USE_DEBUG
+#ifdef LSPC_USE_DEBUG
 #include <Debug/Debug.h>
 #else
 #define ERROR(msg) ((void)0U); // not implemented
@@ -163,8 +163,8 @@ void Socket<COM>::TransmitterThread(void* pvParameters)
 } // namespace lspc
 
 // Template class instantiation based on enabled interface
-#if defined(STM32_LSPC_USE_USB)
+#if defined(LSPC_USE_USB)
 template class lspc::Socket<UART>;
-#elif defined(STM32_LSPC_USE_UART)
+#elif defined(LSPC_USE_UART)
 template class lspc::Socket<UART>;
 #endif

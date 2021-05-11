@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,11 +16,14 @@
  * ------------------------------------------
  */
 
-#ifndef MISC_MOVINGAVERAGE_H
-#define MISC_MOVINGAVERAGE_H
+#pragma once
 
-#include "Debug.h"
+#ifdef USE_FREERTOS
 #include "cmsis_os.h" // for memory allocation (for the buffer)
+#else
+#include <malloc.h>
+#endif
+
 #include "string.h"   // for memset
 #include <stddef.h>
 #include <stdlib.h>
@@ -36,6 +39,13 @@ public:
 
         /* Construct a simple circular buffer for storing past inputs */
         _inputBuffer = (float*)pvPortMalloc(n * sizeof(float));
+
+#ifdef USE_FREERTOS
+        _inputBuffer = (float*)pvPortMalloc(n * sizeof(float));
+#else
+        _inputBuffer = (float*)malloc(n * sizeof(float));
+#endif
+
         memset((uint8_t*)_inputBuffer, 0, n * sizeof(float)); // clear buffer
     }
 
@@ -76,5 +86,3 @@ private:
     uint16_t _inputBufferIdx;
     float    _yPrev;
 };
-
-#endif

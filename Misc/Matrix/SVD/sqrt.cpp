@@ -9,9 +9,9 @@
 //
 
 // Include Files
-#include "sqrt.h"
-#include "mw_cmsis.h"
-#include "rt_nonfinite.h"
+#include <Matrix/SVD/sqrt.h>
+#include <MATLABCoderInit/mw_cmsis.h>
+#include <MATLABCoderInit/rt_nonfinite.h>
 
 // Function Definitions
 

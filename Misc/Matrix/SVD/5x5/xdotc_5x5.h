@@ -13,8 +13,8 @@
 // Include Files
 #include <stddef.h>
 #include <stdlib.h>
-#include "rtwtypes.h"
-#include "svd_types.h"
+#include <MATLABCoderInit/rtwtypes.h>
+#include <Matrix/SVD/svd_types.h>
 
 // Function Declarations
 extern float xdotc_5x5(int n, const float x[25], int ix0, const float y[25], int iy0);

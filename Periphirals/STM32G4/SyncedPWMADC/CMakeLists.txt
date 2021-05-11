@@ -5,6 +5,7 @@ set(LIBRARY_DEPENDENCIES
     HAL::STM32::G4::ADC
     HAL::STM32::G4::ADCEx
     HAL::STM32::G4::DMA
+    HAL::STM32::G4::OPAMP
     HAL::STM32::G4::RCC
     HAL::STM32::G4::RCCEx
     HAL::STM32::G4::GPIO
@@ -26,4 +27,4 @@ get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
 # Defines STM32G4_SYNCEDPWMADC_USE_DEBUG when option is enabled
-add_library_option(${LIBRARY_NAME} DEBUG STM32_Debug)
+add_library_option(${LIBRARY_NAME} DEBUG Debug)

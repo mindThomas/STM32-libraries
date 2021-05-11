@@ -1,4 +1,4 @@
-/* Copyright (C) 2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2020- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,10 +16,9 @@
  * ------------------------------------------
  */
 
-#ifndef MISC_NONLINEAR_LEAST_SQUARES_H
-#define MISC_NONLINEAR_LEAST_SQUARES_H
+#pragma once
 
-#include "Matrix.hpp"
+#include <Matrix/Matrix.hpp>
 
 class NonlinearLeastSquares
 {
@@ -31,5 +30,3 @@ private:
     static float model(const float x, const float* coeffs);
     static void  JacobianRow(const float x, const float* coeffs, float* Jr_row);
 };
-
-#endif

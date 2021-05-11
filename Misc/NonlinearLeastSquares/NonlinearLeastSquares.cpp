@@ -17,10 +17,16 @@
  */
 
 #include "NonlinearLeastSquares.hpp"
-#include "Debug.h"
-#include "Matrix.hpp"
+
+#include <Matrix/Matrix.hpp>
 #include <math.h>
 #include <string.h>
+
+#ifdef NONLINEARLEASTSQUARES_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 void NonlinearLeastSquares::fitExponentialDecay(const Matrix& x, const Matrix& y, float coeffs_out[3])
 {

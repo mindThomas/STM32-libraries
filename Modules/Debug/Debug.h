@@ -35,11 +35,11 @@
 #include "semphr.h"
 #endif
 
-#if defined(STM32_DEBUG_USE_UART) || defined(STM32_DEBUG_USE_LSPC)
+#if defined(DEBUG_USE_UART) || defined(DEBUG_USE_LSPC)
 #define DEBUG_PRINT_ENABLED
 #endif
 
-#if defined(STM32_DEBUG_USE_PRINTF) && defined(DEBUG_PRINT_ENABLED)
+#if defined(DEBUG_USE_PRINTF) && defined(DEBUG_PRINT_ENABLED)
 #define DEBUG_PRINTF_ENABLED
 #endif
 
@@ -54,17 +54,20 @@
 #define DEBUG_STRRCHR(str, sep) strrchr(str, sep)
 #define FILE_BASENAME(file) DEBUG_STRRCHR("/" file, '/') + 1 // 1 indexed instead of 0 indexed
 
+#ifdef DEBUG_USE_VERBOSE
 #define DEBUG(msg) Debug::DebugMessage(FILE_BASENAME(__FILE__), ":" STRINGIFY(__LINE__), msg)
 #define ERROR(msg) Debug::Error(FILE_BASENAME(__FILE__), ":" STRINGIFY(__LINE__), "ERROR: " msg)
-//#define DEBUG(msg) Debug::Message("[Debug] " __FILE__ ":" STRINGIFY(__LINE__) " ", __PRETTY_FUNCTION__, msg)
-//#define ERROR(msg) Debug::Error("[Error] " __FILE__ ":" STRINGIFY(__LINE__) " ", __PRETTY_FUNCTION__, msg)
+#else
+#define DEBUG(msg) Debug::Message("[Debug] ", __PRETTY_FUNCTION__, msg)
+#define ERROR(msg) Debug::Error("[Error] ", __PRETTY_FUNCTION__, msg)
+#endif
 
 #define MAX_DEBUG_TEXT_LENGTH	210 // LSPC_MAXIMUM_PACKAGE_LENGTH
 
 class Debug
 {
 	private:
-		const int THREAD_STACK_SIZE = 512; // notice that this much stack is apparently necessary to avoid issues
+		const int THREAD_STACK_SIZE = 256; // notice that this much stack is apparently necessary to avoid issues
 		const uint32_t THREAD_PRIORITY = DEBUG_MESSAGE_PRIORITY;
 
 	public:

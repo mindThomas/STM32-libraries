@@ -11,7 +11,7 @@
 #define QEKF_WITHALLCORRECTIONS_TYPES_H
 
 // Include Files
-#include "rtwtypes.h"
+#include <MATLABCoderInit/rtwtypes.h>
 #endif
 
 //

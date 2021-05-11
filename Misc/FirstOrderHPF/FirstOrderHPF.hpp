@@ -16,8 +16,7 @@
  * ------------------------------------------
  */
  
-#ifndef MISC_FIRSTORDERHPF_H
-#define MISC_FIRSTORDERHPF_H
+#pragma once
 
 class FirstOrderHPF
 {
@@ -39,6 +38,3 @@ class FirstOrderHPF
 		float _lpfOld = 0.0;   // Holds previous sample output value
 		float _inputOld = 0.0; // Holds previous sample output value
 };
-	
-	
-#endif

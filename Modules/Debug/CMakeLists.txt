@@ -1,4 +1,4 @@
-set(LIBRARY_NAME STM32_Debug)
+set(LIBRARY_NAME Debug)
 set(LIBRARY_DEPENDENCIES)
 set(PERIPHERAL_DEPENDENCIES IO)
 set(LIBRARY_SOURCES Debug.cpp)
@@ -19,7 +19,8 @@ foreach(dependency ${PERIPHERAL_DEPENDENCIES})
 endforeach()
 
 # Define the type of DEBUG interface for PRINTF support
-# Select using e.g. 'enable_option(your_target STM32_Debug "UART")'
+# Select using e.g. 'enable_option(your_target Debug "UART")'
 add_library_option(${LIBRARY_NAME} UART $<TARGET_PROPERTY:DEVICE_FAMILY>_UART)
-add_library_option(${LIBRARY_NAME} LSPC STM32_LSPC)
+add_library_option(${LIBRARY_NAME} LSPC LSPC_)
 add_library_option(${LIBRARY_NAME} PRINTF)
+add_library_option(${LIBRARY_NAME} VERBOSE)

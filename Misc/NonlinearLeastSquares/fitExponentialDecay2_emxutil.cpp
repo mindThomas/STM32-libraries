@@ -11,7 +11,7 @@
 // Include Files
 #include "fitExponentialDecay2_emxutil.h"
 #include "fitExponentialDecay2.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include <stdlib.h>
 #include <string.h>
 

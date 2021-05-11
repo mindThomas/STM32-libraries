@@ -10,7 +10,7 @@
 
 // Include Files
 #include "xaxpy_6x6.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include "svd_6x6.h"
 
 // Function Definitions

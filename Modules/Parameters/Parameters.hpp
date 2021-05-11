@@ -16,8 +16,7 @@
  * ------------------------------------------
  */
 
-#ifndef MODULES_PARAMETERS_H
-#define MODULES_PARAMETERS_H
+#pragma once
 
 #include "stm32h7xx_hal.h"
 #include "ThreadSafeParameter.hpp"
@@ -388,5 +387,3 @@ class Parameters
 		SemaphoreHandle_t writeSemaphore_;
 		uint32_t changeCounter_;
 };
-	
-#endif

@@ -230,6 +230,11 @@ float HAL_GetTime(void)
 	return (float)HAL_GetHighResTick() / frequency;
 }
 
+float HAL_Tick2Time(uint32_t ticks)
+{
+    return (float)ticks / frequency;
+}
+
 /**
   * @brief This function handles TIM1 break interrupt and TIM15 global interrupt.
   */

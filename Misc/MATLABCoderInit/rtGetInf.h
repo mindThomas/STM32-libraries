@@ -11,8 +11,8 @@
 #ifndef RTGETINF_H
 #define RTGETINF_H
 #include <stddef.h>
-#include "rtwtypes.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rtwtypes.h>
+#include <MATLABCoderInit/rt_nonfinite.h>
 
 extern real_T rtGetInf(void);
 extern real32_T rtGetInfF(void);

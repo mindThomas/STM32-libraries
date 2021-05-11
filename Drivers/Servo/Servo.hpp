@@ -16,8 +16,7 @@
  * ------------------------------------------
  */
  
-#ifndef DRIVERS_SERVO_H
-#define DRIVERS_SERVO_H
+#pragma once
 
 #include <PWM/PWM.hpp>
 
@@ -25,19 +24,16 @@ class Servo : private PWM
 {
 	
 public:
-	Servo(timer_t timer, pwm_channel_t channel, float min = -1.0f, float max = 1.0f, float min_ms = 1.0f, float max_ms = 2.0f, uint16_t range_resolution_steps = 2048);
+	Servo(timer_t timer, pwm_channel_t channel, float min = -1.0f, float max = 1.0f, float min_ms = 1.0f, float max_ms = 2.0f);
 	
 	void Set(float value);
 	void Disable();
 
 private:	
-	float _min_ms;
-	float _min_value;
-	float _max_ms;	
-	float _max_value;
-	float _ms_resolution;
+	const float _min_ms;
+    const float _min_value;
+    const float _max_ms;
+    const float _max_value;
+    const float _ms_resolution;
 	
 };
-	
-	
-#endif

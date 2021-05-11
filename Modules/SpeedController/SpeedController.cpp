@@ -18,10 +18,8 @@
 
 #include "SpeedController.hpp"
 #include <MathLib/MathLib.h>
-#include "cmsis_os.h" // for processing task
-#include <math.h>
 
-#include <Debug/Debug.h>
+#include <math.h>
 
 int32_t SpeedController::EncoderDiff = 0;
 float   SpeedController::SpeedRaw;

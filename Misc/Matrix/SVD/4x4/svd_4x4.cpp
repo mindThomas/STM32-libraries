@@ -10,7 +10,7 @@
 
 // Include Files
 #include "svd_4x4.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include "svd_4x4_impl.h"
 #include <arm_math.h>
 #include <string.h>

@@ -10,8 +10,8 @@
 
 // Include Files
 #include "xrotg_6x6.h"
-#include "mw_cmsis.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/mw_cmsis.h>
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include "svd_6x6.h"
 #include <math.h>
 

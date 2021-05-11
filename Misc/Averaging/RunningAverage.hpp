@@ -16,8 +16,7 @@
  * ------------------------------------------
  */
 
-#ifndef MISC_RUNNINGAVERAGE_H
-#define MISC_RUNNINGAVERAGE_H
+#pragma once
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -45,5 +44,3 @@ private:
     uint32_t _nSamples; // number of currently averaged samples
     float    _value;
 };
-
-#endif

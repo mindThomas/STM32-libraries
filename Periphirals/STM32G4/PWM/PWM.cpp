@@ -386,3 +386,11 @@ void PWM::SetRaw(uint16_t value)
     else
         __HAL_TIM_SET_COMPARE(&_hRes->handle, _channelHAL, _hRes->maxValue - value);
 }
+
+uint16_t PWM::GetMaxValue()
+{
+    if (!_hRes)
+        return 0;
+
+    return _hRes->maxValue;
+}

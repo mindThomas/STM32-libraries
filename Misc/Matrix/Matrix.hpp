@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2020 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,30 +16,29 @@
  * ------------------------------------------
  */
 
-#ifndef MISC_MATRIX_H
-#define MISC_MATRIX_H
+#pragma once
 
 #include <arm_math.h>
 #include <stddef.h>
 #include <stdlib.h>
 
-#include "inv2x2.h"
-#include "inv3x3.h"
-#include "inv4x4.h"
-#include "inv5x5.h"
-#include "inv6x6.h"
+#include <Matrix/Inverse/inv2x2.h>
+#include <Matrix/Inverse/inv3x3.h>
+#include <Matrix/Inverse/inv4x4.h>
+#include <Matrix/Inverse/inv5x5.h>
+#include <Matrix/Inverse/inv6x6.h>
 
-#include "det2x2.h"
-#include "det3x3.h"
-#include "det4x4.h"
-#include "det5x5.h"
-#include "det6x6.h"
+#include <Matrix/Determinant/det2x2.h>
+#include <Matrix/Determinant/det3x3.h>
+#include <Matrix/Determinant/det4x4.h>
+#include <Matrix/Determinant/det5x5.h>
+#include <Matrix/Determinant/det6x6.h>
 
-#include "svd_2x2.h"
-#include "svd_3x3.h"
-#include "svd_4x4.h"
-#include "svd_5x5.h"
-#include "svd_6x6.h"
+#include <Matrix/SVD/2x2/svd_2x2.h>
+#include <Matrix/SVD/3x3/svd_3x3.h>
+#include <Matrix/SVD/4x4/svd_4x4.h>
+#include <Matrix/SVD/5x5/svd_5x5.h>
+#include <Matrix/SVD/6x6/svd_6x6.h>
 
 class Matrix
 {
@@ -85,7 +84,9 @@ public:
     float  det() const;
     Matrix diag() const;
 
+#ifdef MATRIX_USE_DEBUG
     void print(const char* preText = 0) const;
+#endif
 
 private:
     operator arm_matrix_instance_f32*();
@@ -232,6 +233,7 @@ public:
 extern void Matrix_Extract(const float* in, const int in_rows, const int in_cols, const int in_row, const int in_col,
                            const int out_rows, const int out_cols, float* out);
 extern void Matrix_Round(float* matrix, int rows, int cols);
-extern void Matrix_Print(float* matrix, int rows, int cols);
 
+#ifdef MATRIX_USE_DEBUG
+extern void Matrix_Print(float* matrix, int rows, int cols);
 #endif

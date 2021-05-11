@@ -16,12 +16,18 @@
  * ------------------------------------------
  */
  
-#ifndef MODULES_CPULOAD_H
-#define MODULES_CPULOAD_H
+#pragma once
 
-#include "cmsis_os.h" // for processing task
+// FreeRTOS include for processing task
+#ifdef USE_FREERTOS
+#include "FreeRTOS.h"
+#else
+#error "CPU Load should be used with FreeRTOS"
+#endif
 
-#include "LSPC.hpp"
+#include <LSPC/LSPC.hpp>
+
+#include <map>
 
 class CPULoad
 {
@@ -32,15 +38,20 @@ class CPULoad
 		CPULoad(LSPC& lspc, uint32_t cpuLoadTaskPriority);
 		~CPULoad();
 
-	private:
-		TaskHandle_t _cpuLoadTaskHandle;
+    private:
+        void TaskRunTimeStats(char * pcWriteBuffer);
+        void MemoryStats(char * pcWriteBuffer);
 
-		LSPC& _lspc;
+	private:
+		TaskHandle_t cpuLoadTaskHandle_;
+
+		LSPC& lspc_;
+
+		std::map<TaskHandle_t, uint32_t> prevTaskRunTime;
+        uint32_t prevTotalRunTime{0};
 
 	private:
 		static void CPULoadThread(void * pvParameters);
+        static char * WriteTaskNameToBuffer(char * pcBuffer, const char * pcTaskName);
 		
 };
-	
-	
-#endif

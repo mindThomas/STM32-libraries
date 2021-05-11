@@ -17,7 +17,7 @@ extern "C" {
 // Include Files
 #include <stddef.h>
 #include <stdlib.h>
-#include "rtwtypes.h"
+#include <MATLABCoderInit/rtwtypes.h>
 
 // Function Declarations
 void MATLABCoder_initialize();

@@ -15,7 +15,7 @@
 #endif
 
 #include <stddef.h>
-#include "rtwtypes.h"
+#include <MATLABCoderInit/rtwtypes.h>
 
 extern real_T rtInf;
 extern real_T rtMinusInf;

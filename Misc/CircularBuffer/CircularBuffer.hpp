@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,11 +16,15 @@
  * ------------------------------------------
  */
 
-#ifndef MISC_CIRCULARBUFFER_H
-#define MISC_CIRCULARBUFFER_H
+#pragma once
 
-#include "Debug.h"  // for error messages
 #include <string.h> // for memset
+
+#ifdef CIRCULARBUFFER_USE_DEBUG
+#include <Debug/Debug.h> // for error messages
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 #ifdef USE_FREERTOS
 #include "cmsis_os.h" // for memory allocation (for the buffer) and callback
@@ -234,5 +238,3 @@ private:
     SemaphoreHandle_t _bufferSemaphore;
 #endif
 };
-
-#endif

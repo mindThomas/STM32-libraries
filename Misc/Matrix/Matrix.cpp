@@ -17,13 +17,20 @@
  */
 
 #include "Matrix.hpp"
-#include <Debug/Debug.h>
+#include "Matrix.h"
+
 #include <algorithm> // std::swap etc.
 #include <arm_math.h>
 #include <malloc.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef MATRIX_USE_DEBUG
+#include <Debug/Debug.h>
+#else
+#define ERROR(msg) ((void)0U); // not implemented
+#endif
 
 /* Matrices are stored in memory in Row-major format
  * This means that elements next to each other in memory corresponds to elements next to each other of the same row
@@ -291,6 +298,7 @@ Matrix Matrix::diag() const
     }
 }
 
+#ifdef MATRIX_USE_DEBUG
 void Matrix::print(const char* preText) const
 {
     if (preText) {
@@ -305,6 +313,7 @@ void Matrix::print(const char* preText) const
         Debug::print("\n");
     }
 }
+#endif
 
 /* Static functions - also kept for legacy support reasons */
 
@@ -334,6 +343,7 @@ void Matrix_Round(float* matrix, int rows, int cols)
     }
 }
 
+#ifdef MATRIX_USE_DEBUG
 void Matrix_Print(float* matrix, int rows, int cols)
 {
     for (int m = 0; m < rows; m++) {
@@ -344,6 +354,7 @@ void Matrix_Print(float* matrix, int rows, int cols)
         Debug::print("\n");
     }
 }
+#endif
 
 arm_status Matrix_Multiply(const float* A, uint8_t A_rows, uint8_t A_cols, const float* B, uint8_t B_rows,
                            uint8_t B_cols, float* out, uint8_t out_rows, uint8_t out_cols)

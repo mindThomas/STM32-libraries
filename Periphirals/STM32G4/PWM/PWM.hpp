@@ -48,6 +48,7 @@ class PWM
 
 		void Set(float value);
 		void SetRaw(uint16_t value);
+        uint16_t GetMaxValue();
 
 	public:
 		typedef struct hardware_resource_t {

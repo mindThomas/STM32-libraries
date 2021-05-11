@@ -16,6 +16,8 @@ float HAL_GetTime(void);
 uint32_t HAL_tic();
 float HAL_toc(uint32_t timerPrev);
 
+float HAL_Tick2Time(uint32_t ticks);
+
 #ifdef __cplusplus
 }
 #endif

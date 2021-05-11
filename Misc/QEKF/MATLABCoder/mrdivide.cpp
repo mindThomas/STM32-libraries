@@ -11,7 +11,7 @@
 // Include Files
 #include "mrdivide.h"
 #include "QEKF_coder.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include <math.h>
 
 // Function Definitions

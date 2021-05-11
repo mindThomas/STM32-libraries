@@ -13,7 +13,7 @@
 // Include Files
 #include <stddef.h>
 #include <stdlib.h>
-#include "rtwtypes.h"
+#include <MATLABCoderInit/rtwtypes.h>
 #include "QEKF_types.h"
 
 // Function Declarations

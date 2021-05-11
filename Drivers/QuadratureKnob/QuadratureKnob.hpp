@@ -16,8 +16,7 @@
  * ------------------------------------------
  */
  
-#ifndef DEVICES_QUADRATURE_KNOB_H
-#define DEVICES_QUADRATURE_KNOB_H
+#pragma once
 
 #include <IO/IO.hpp>
 
@@ -42,6 +41,3 @@ class QuadratureKnob
 	private:
 		static const int8_t EncStates[16];
 };
-	
-	
-#endif

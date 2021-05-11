@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,11 +16,10 @@
  * ------------------------------------------
  */
  
-#ifndef MODULES_ESTIMATORS_QEKF_H
-#define MODULES_ESTIMATORS_QEKF_H
+#pragma once
 
-#include "Parameters.h"
-#include "Timer.h"
+#include <Parameters/Parameters.hpp>
+#include <Timer/Timer.hpp>
 
 class QEKF
 {
@@ -58,6 +57,3 @@ class QEKF
 		float X[10];    // state estimates = { q[0], q[1], q[2], q[3], omega_x, omega_y, omega_z, gyro_bias[0], gyro_bias[1], gyro_bias[2] }
 		float P[10*10]; // covariance matrix
 };
-	
-	
-#endif

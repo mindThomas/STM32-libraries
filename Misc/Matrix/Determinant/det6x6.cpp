@@ -11,7 +11,7 @@
 // Include Files
 #include <math.h>
 #include <string.h>
-//#include "rt_nonfinite.h"
+//#include <MATLABCoderInit/rt_nonfinite.h>
 #include "det6x6.h"
 
 // Function Definitions

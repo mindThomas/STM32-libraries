@@ -22,10 +22,10 @@
 #include <cmath>
 #include <math.h>
 #include <string.h> // for memcpy
+#include <arm_math.h>
 
 #include <MathLib/MathLib.h> // for matrix symmetrization
-#include <Quaternion/Quaternion.hpp>
-#include "arm_math.h"
+#include <Quaternion/Quaternion.h>
 
 QEKF::QEKF(Parameters& params, Timer* microsTimer)
     : _params(params)

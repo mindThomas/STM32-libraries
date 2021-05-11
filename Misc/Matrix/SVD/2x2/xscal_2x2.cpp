@@ -10,7 +10,7 @@
 
 // Include Files
 #include "xscal_2x2.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include "svd_2x2.h"
 
 // Function Definitions

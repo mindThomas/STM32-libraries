@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,13 +16,12 @@
  * ------------------------------------------
  */
  
-#ifndef MODULES_CONTROLLERS_PID_H
-#define MODULES_CONTROLLERS_PID_H
+#pragma once
 
 #include <stddef.h>
 #include <stdlib.h>
 
-#include "Timer.h"
+#include <Timer/Timer.hpp>
 
 class PID
 {
@@ -47,6 +46,3 @@ class PID
 		float prev_error_;
 		float integral_;
 };
-	
-	
-#endif

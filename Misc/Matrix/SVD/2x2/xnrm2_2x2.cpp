@@ -10,8 +10,8 @@
 
 // Include Files
 #include "xnrm2_2x2.h"
-#include "mw_cmsis.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/mw_cmsis.h>
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include "svd_2x2.h"
 #include <math.h>
 

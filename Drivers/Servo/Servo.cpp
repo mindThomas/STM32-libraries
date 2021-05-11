@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -19,18 +19,14 @@
 #include "Servo.hpp"
 #include <math.h>
 
-Servo::Servo(timer_t timer, pwm_channel_t channel, float min, float max, float min_ms, float max_ms,
-             uint16_t range_resolution_steps)
-    : PWM(timer, channel, 50, (uint16_t)roundf(20.0f / ((max_ms - min_ms) / range_resolution_steps)))
-    , // 50 Hz = 20 ms with '_ms_resolution' resolution
-    _min_ms(min_ms)
-    , _min_value(min)
-    , _max_ms(max_ms)
-    , _max_value(max)
+Servo::Servo(timer_t timer, pwm_channel_t channel, float min, float max, float min_ms, float max_ms)
+    : PWM(timer, channel, 50) // 50 Hz = 20 ms with '_ms_resolution' resolution
+    , _min_ms{min_ms}
+    , _min_value{min}
+    , _max_ms{max_ms}
+    , _max_value{max}
+    , _ms_resolution{1000.0f / (50.0f * GetMaxValue())}
 {
-    uint16_t PWM_Max = (uint16_t)roundf(20.0f / ((max_ms - min_ms) / range_resolution_steps));
-    _ms_resolution   = 1000.0f / (50.0f * PWM_Max);
-    //_ms_resolution = (max_ms - min_ms) / range_resolution_steps;
     Disable();
 }
 

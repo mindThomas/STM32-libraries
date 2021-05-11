@@ -11,7 +11,7 @@
 #define FITEXPONENTIALDECAY2_TYPES_H
 
 // Include Files
-#include "rtwtypes.h"
+#include <MATLABCoderInit/rtwtypes.h>
 
 // Type Definitions
 #ifndef struct_emxArray_real32_T

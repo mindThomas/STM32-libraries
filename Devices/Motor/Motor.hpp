@@ -1,4 +1,4 @@
-/* Copyright (C) 2018-2019 Thomas Jespersen, TKJ Electronics. All rights reserved.
+/* Copyright (C) 2018- Thomas Jespersen, TKJ Electronics. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the MIT License
@@ -16,13 +16,11 @@
  * ------------------------------------------
  */
  
-#ifndef DEVICES_MOTOR_H
-#define DEVICES_MOTOR_H
+#pragma once
 
-#include "stm32h7xx_hal.h"
-#include "MotorDriver.h"
-#include "Encoder.h"
-#include "CurrentSense.h"
+#include <MotorDriver/MotorDriver.hpp>
+#include <Encoder/Encoder.hpp>
+#include <CurrentSense/CurrentSense.hpp>
 
 class Motor
 {

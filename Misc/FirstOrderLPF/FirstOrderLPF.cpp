@@ -17,7 +17,9 @@
  */
 
 #include "FirstOrderLPF.hpp"
+
 #include <MathLib/MathLib.h>
+
 #include <cmath>
 
 FirstOrderLPF::FirstOrderLPF(float Ts, float freq3dB)

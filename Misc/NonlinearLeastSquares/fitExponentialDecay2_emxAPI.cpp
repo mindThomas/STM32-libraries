@@ -12,7 +12,7 @@
 #include "fitExponentialDecay2_emxAPI.h"
 #include "fitExponentialDecay2.h"
 #include "fitExponentialDecay2_emxutil.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include <stdlib.h>
 
 // Function Definitions

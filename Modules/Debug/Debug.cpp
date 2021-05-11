@@ -29,9 +29,9 @@ void HAL_Delay(uint32_t Delay); // forward declaration
 #define delay(x) HAL_Delay(x)
 #endif
 
-#ifdef STM32_DEBUG_USE_UART
+#ifdef DEBUG_USE_UART
 #include <UART/UART.hpp>
-#elif defined(STM32_DEBUG_USE_LSPC)
+#elif defined(DEBUG_USE_LSPC)
 #include <LSPC/LSPC.hpp>
 #endif
 
@@ -76,7 +76,7 @@ void Debug::AssignDebugCOM(void* com)
     vQueueAddToRegistry(debugHandle.mutex_, "Debug mutex");
     xSemaphoreGive(debugHandle.mutex_); // give the semaphore the first time
 
-#ifdef STM32_DEBUG_USE_LSPC
+#ifdef DEBUG_USE_LSPC
     xTaskCreate(Debug::PackageGeneratorThread, (char*)"Debug transmitter", debugHandle.THREAD_STACK_SIZE,
                 (void*)&debugHandle, debugHandle.THREAD_PRIORITY, &debugHandle._TaskHandle);
 #endif
@@ -86,7 +86,7 @@ void Debug::AssignDebugCOM(void* com)
 
 #ifdef DEBUG_PRINT_ENABLED
 #ifdef USE_FREERTOS
-#ifdef STM32_DEBUG_USE_LSPC
+#ifdef DEBUG_USE_LSPC
 void Debug::PackageGeneratorThread(void* pvParameters)
 {
     Debug* debug = (Debug*)pvParameters;
@@ -112,7 +112,7 @@ void Debug::Message(const char* msg)
 #ifdef DEBUG_PRINT_ENABLED
     if (!debugHandle.com_)
         return;
-#ifndef STM32_DEBUG_USE_LSPC
+#ifndef DEBUG_USE_LSPC
 #ifdef USE_FREERTOS
     xSemaphoreTake(debugHandle.mutex_, (TickType_t)portMAX_DELAY); // take debug mutex
 #endif
@@ -235,7 +235,7 @@ void Debug::printf(const char* msgFmt, ...)
 
     if (!debugHandle.com_)
         return;
-#ifdef STM32_DEBUG_USE_LSPC
+#ifdef DEBUG_USE_LSPC
     if (!((LSPC*)debugHandle.com_)->Connected())
         return;
 #endif

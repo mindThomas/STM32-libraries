@@ -10,7 +10,7 @@
 #define MW_CMSIS_H
 
 #include "arm_math.h"
-#include "rtwtypes.h"
+#include <MATLABCoderInit/rtwtypes.h>
 
 #define mw_arm_abs_f32(pSrc, pDst, blockSize) arm_abs_f32((float32_t *)pSrc, (float32_t *)pDst, blockSize)
 #define mw_arm_abs_q7(pSrc, pDst, blockSize) arm_abs_q7((q7_t *)pSrc, (q7_t *)pDst, blockSize) 

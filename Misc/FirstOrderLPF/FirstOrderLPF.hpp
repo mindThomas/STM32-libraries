@@ -15,9 +15,8 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef MISC_FIRSTORDERLPF_H
-#define MISC_FIRSTORDERLPF_H
+
+#pragma once
 
 class FirstOrderLPF
 {
@@ -39,6 +38,3 @@ class FirstOrderLPF
 		float _lpfOld = 0.0;   // Holds previous sample output value
 		float _inputOld = 0.0; // Holds previous sample output value
 };
-	
-	
-#endif

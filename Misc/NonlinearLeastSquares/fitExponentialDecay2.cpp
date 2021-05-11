@@ -12,8 +12,8 @@
 #include "fitExponentialDecay2.h"
 #include "exp.h"
 #include "fitExponentialDecay2_emxutil.h"
-#include "mw_cmsis.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/mw_cmsis.h>
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include <math.h>
 
 // Function Declarations

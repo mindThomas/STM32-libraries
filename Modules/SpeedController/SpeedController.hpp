@@ -15,18 +15,21 @@
  * e-mail   :  thomasj@tkjelectronics.dk
  * ------------------------------------------
  */
- 
-#ifndef MODULES_SPEEDCONTROLLER_H
-#define MODULES_SPEEDCONTROLLER_H
 
+#pragma once
+
+#ifdef USE_FREERTOS
 #include "cmsis_os.h" // for processing task
+#else
+#error "FreeRTOS required"
+#endif
 
-#include "LSPC.hpp"
-#include "Timer.h"
-#include "Servo.h"
-#include "Encoder.h"
-#include "PID.h"
-#include "FirstOrderLPF.h"
+#include <LSPC/LSPC.hpp>
+#include <Timer/Timer.hpp>
+#include <Servo/Servo.hpp>
+#include <Encoder/Encoder.hpp>
+#include <PID/PID.hpp>
+#include <FirstOrderLPF/FirstOrderLPF.hpp>
 
 #include <functional>
 
@@ -91,6 +94,3 @@ class SpeedController
 		static float MotorOutput;
 
 };
-	
-	
-#endif

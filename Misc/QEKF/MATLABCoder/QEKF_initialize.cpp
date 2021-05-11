@@ -11,7 +11,7 @@
 // Include Files
 #include "QEKF_initialize.h"
 #include "QEKF_coder.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 
 // Function Definitions
 

@@ -16,10 +16,7 @@
  * ------------------------------------------
  */
 
-#ifndef MISC_IIR_H
-#define MISC_IIR_H
-
-#include "Debug.h"
+#pragma once
 
 template<int ORDER>
 class IIR
@@ -82,5 +79,3 @@ private:
     float u_old[ORDER];
     float y_old[ORDER];
 };
-
-#endif

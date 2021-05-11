@@ -31,10 +31,10 @@
 #error "LSPC requires FreeRTOS"
 #endif
 
-#if defined(STM32_LSPC_USE_USB)
+#if defined(LSPC_USE_USB)
 //#include <USBCDC/USBCDC.hpp>
 #include <UART/UART.hpp>
-#elif defined(STM32_LSPC_USE_UART)
+#elif defined(LSPC_USE_UART)
 #include <UART/UART.hpp>
 #else
 #error "LSPC interface undefined"
@@ -100,8 +100,8 @@ private:
 
 } // namespace lspc
 
-#if defined(STM32_LSPC_USE_USB)
+#if defined(LSPC_USE_USB)
 using LSPC = lspc::Socket<UART>; // define whether to use USB or UART
-#elif defined(STM32_LSPC_USE_UART)
+#elif defined(LSPC_USE_UART)
 using LSPC = lspc::Socket<UART>; // define whether to use USB or UART
 #endif

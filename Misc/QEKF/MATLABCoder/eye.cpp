@@ -11,7 +11,7 @@
 // Include Files
 #include "eye.h"
 #include "QEKF_coder.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include <string.h>
 
 // Function Definitions

@@ -14,7 +14,7 @@
 #include "mrdivide.h"
 #include "norm.h"
 #include "rt_defines.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include <math.h>
 #include <string.h>
 

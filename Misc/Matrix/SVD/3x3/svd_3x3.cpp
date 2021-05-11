@@ -10,7 +10,7 @@
 
 // Include Files
 #include "svd_3x3.h"
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include "svd_3x3_impl.h"
 #include <arm_math.h>
 

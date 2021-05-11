@@ -13,7 +13,7 @@
  *      MATLAB for code generation function to initialize non-finites,
  *      (Inf, NaN and -Inf).
  */
-#include "rt_nonfinite.h"
+#include <MATLABCoderInit/rt_nonfinite.h>
 #include "rtGetInf.h"
 #include "rtGetNaN.h"
 
