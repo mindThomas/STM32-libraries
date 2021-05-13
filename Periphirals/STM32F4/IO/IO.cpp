@@ -19,7 +19,7 @@
 #include <Priorities.h>
 #include <IO/IO.hpp>
 
-#ifdef STM32H7_IO_USE_DEBUG
+#ifdef STM32F4_IO_USE_DEBUG
 #include <Debug/Debug.h>
 #else
 #define ERROR(msg) ((void)0U); // not implemented
@@ -110,18 +110,30 @@ void IO::ConfigurePin(GPIO_TypeDef* GPIOx, uint32_t GPIO_Pin, bool isInput, bool
     // GPIO Ports Clock Enable
     if (GPIOx == GPIOA)
         __HAL_RCC_GPIOA_CLK_ENABLE();
+#ifdef GPIOB
     else if (GPIOx == GPIOB)
         __HAL_RCC_GPIOB_CLK_ENABLE();
+#endif
+#ifdef GPIOC
     else if (GPIOx == GPIOC)
         __HAL_RCC_GPIOC_CLK_ENABLE();
+#endif
+#ifdef GPIOD
     else if (GPIOx == GPIOD)
         __HAL_RCC_GPIOD_CLK_ENABLE();
+#endif
+#ifdef GPIOE
     else if (GPIOx == GPIOE)
         __HAL_RCC_GPIOE_CLK_ENABLE();
+#endif
+#ifdef GPIOF
     else if (GPIOx == GPIOF)
         __HAL_RCC_GPIOF_CLK_ENABLE();
+#endif
+#ifdef GPIOG
     else if (GPIOx == GPIOG)
         __HAL_RCC_GPIOG_CLK_ENABLE();
+#endif
     else {
         _GPIO = 0;
         return;

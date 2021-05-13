@@ -22,11 +22,10 @@
 #include <string.h> // for memset
 
 // HAL libraries
-#include <stm32g4xx_hal_uart.h>
-#include <stm32g4xx_hal_uart_ex.h>
-#include <stm32g4xx_hal_dma.h>
+#include <stm32f4xx_hal_uart.h>
+#include <stm32f4xx_hal_dma.h>
 
-#ifdef STM32G4_UART_USE_DEBUG
+#ifdef STM32F4_UART_USE_DEBUG
 #include <Debug/Debug.h>
 #else
 #define ERROR(msg) ((void)0U); // not implemented
@@ -40,8 +39,8 @@ UART* UART::objUART2 = 0;
 
 // Necessary to export for compiler to generate code to be called by interrupt vector
 extern "C" void USART2_IRQHandler(void);
-extern "C" void DMA1_Channel3_IRQHandler(void);
-extern "C" void DMA1_Channel4_IRQHandler(void);
+extern "C" void DMA1_Stream5_IRQHandler(void);
+extern "C" void DMA1_Stream6_IRQHandler(void);
 extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef* UartHandle);
 extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* UartHandle);
 extern "C" void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef* UartHandle);
@@ -68,8 +67,9 @@ UART::UART(port_t port, uint32_t baud, uint32_t bufferLength, bool DMA_enabled)
     , _RXcallback(0)
     , _RXcallbackParameter(0)
 #else
-UART::UART(port_t port, uint32_t baud, uint32_t bufferLength)
+UART::UART(port_t port, uint32_t baud, uint32_t bufferLength, bool DMA_enabled)
     : BaudRate(baud)
+    , DMA_Enabled(DMA_enabled)
     , _port(port)
     , _rxByteAvailable(false)
     , _rxAvailableOnIdle(false)
@@ -174,29 +174,11 @@ void UART::ConfigurePeripheral()
     _handle.Init.Mode                   = UART_MODE_TX_RX;
     _handle.Init.HwFlowCtl              = UART_HWCONTROL_NONE;
     _handle.Init.OverSampling           = UART_OVERSAMPLING_16;
-    _handle.Init.OneBitSampling         = UART_ONE_BIT_SAMPLE_DISABLE;
-    _handle.Init.ClockPrescaler         = UART_PRESCALER_DIV1;
-    _handle.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
 
-    __HAL_UART_DISABLE_IT(&_handle, UART_IT_RXFF | UART_IT_TXFE | UART_IT_RXFT | UART_IT_TXFT | UART_IT_WUF |
-                                      UART_IT_CM | UART_IT_CTS | UART_IT_LBD | UART_IT_TXE | UART_IT_TXFNF |
-                                      UART_IT_TC | UART_IT_RXNE | UART_IT_RXFNE | UART_IT_IDLE | UART_IT_PE |
-                                      UART_IT_ERR);
+    __HAL_UART_DISABLE_IT(&_handle,  UART_IT_CTS | UART_IT_LBD | UART_IT_TXE | UART_IT_TC | UART_IT_RXNE | UART_IT_IDLE | UART_IT_PE | UART_IT_ERR);
     HAL_NVIC_DisableIRQ(USART2_IRQn);
 
     if (HAL_UART_Init(&_handle) != HAL_OK) {
-        ERROR("Could not initialize UART port");
-        return;
-    }
-    if (HAL_UARTEx_SetTxFifoThreshold(&_handle, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK) {
-        ERROR("Could not initialize UART port");
-        return;
-    }
-    if (HAL_UARTEx_SetRxFifoThreshold(&_handle, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK) {
-        ERROR("Could not initialize UART port");
-        return;
-    }
-    if (HAL_UARTEx_DisableFifoMode(&_handle) != HAL_OK) {
         ERROR("Could not initialize UART port");
         return;
     }
@@ -212,9 +194,6 @@ void UART::ConfigurePeripheral()
          * disabled) */
         __HAL_UART_ENABLE_IT(&_handle, UART_IT_PE);
         __HAL_UART_ENABLE_IT(&_handle, UART_IT_RXNE);
-
-        /* Clear OverRun Error Flag */
-        __HAL_UART_CLEAR_FLAG(&_handle, UART_CLEAR_OREF);
     } else {
         ConfigurePeripheral_DMA();
     }
@@ -230,8 +209,8 @@ void UART::ConfigurePeripheral_DMA()
 {
     /* USART2 DMA Init */
     /* USART2_RX Init */
-    _rxDMA.Instance                 = DMA1_Channel3;
-    _rxDMA.Init.Request             = DMA_REQUEST_USART2_RX;
+    _rxDMA.Instance                 = DMA1_Stream5;
+    _rxDMA.Init.Channel             = DMA_CHANNEL_4;
     _rxDMA.Init.Direction           = DMA_PERIPH_TO_MEMORY;
     _rxDMA.Init.PeriphInc           = DMA_PINC_DISABLE;
     _rxDMA.Init.MemInc              = DMA_MINC_ENABLE;
@@ -239,6 +218,10 @@ void UART::ConfigurePeripheral_DMA()
     _rxDMA.Init.MemDataAlignment    = DMA_MDATAALIGN_BYTE;
     _rxDMA.Init.Mode                = DMA_CIRCULAR;
     _rxDMA.Init.Priority            = DMA_PRIORITY_LOW;
+    _rxDMA.Init.FIFOMode            = DMA_FIFOMODE_DISABLE;
+    _rxDMA.Init.FIFOThreshold       = DMA_FIFO_THRESHOLD_FULL;
+    _rxDMA.Init.MemBurst            = DMA_MBURST_INC4;
+    _rxDMA.Init.PeriphBurst         = DMA_PBURST_INC4;
     if (HAL_DMA_Init(&_rxDMA) != HAL_OK) {
         ERROR("Could not initialize UART RX DMA");
         return;
@@ -247,8 +230,8 @@ void UART::ConfigurePeripheral_DMA()
     __HAL_LINKDMA(&_handle, hdmarx, _rxDMA);
 
     /* USART2_TX Init */
-    _txDMA.Instance                 = DMA1_Channel4;
-    _txDMA.Init.Request             = DMA_REQUEST_USART2_TX;
+    _txDMA.Instance                 = DMA1_Stream6;
+    _txDMA.Init.Channel             = DMA_CHANNEL_4;
     _txDMA.Init.Direction           = DMA_MEMORY_TO_PERIPH;
     _txDMA.Init.PeriphInc           = DMA_PINC_DISABLE;
     _txDMA.Init.MemInc              = DMA_MINC_ENABLE;
@@ -256,6 +239,10 @@ void UART::ConfigurePeripheral_DMA()
     _txDMA.Init.MemDataAlignment    = DMA_MDATAALIGN_BYTE;
     _txDMA.Init.Mode                = DMA_NORMAL;
     _txDMA.Init.Priority            = DMA_PRIORITY_LOW;
+    _txDMA.Init.FIFOMode            = DMA_FIFOMODE_DISABLE;
+    _txDMA.Init.FIFOThreshold       = DMA_FIFO_THRESHOLD_FULL;
+    _txDMA.Init.MemBurst            = DMA_MBURST_INC4;
+    _txDMA.Init.PeriphBurst         = DMA_PBURST_INC4;
     if (HAL_DMA_Init(&_txDMA) != HAL_OK) {
         ERROR("Could not initialize UART TX DMA");
         return;
@@ -272,29 +259,20 @@ void UART::InitPeripheral()
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
     if (_port == PORT_UART2) {
-        /* Initializes the peripherals clocks */
-        RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
-        PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2;
-        PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
-        if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-        {
-            ERROR("Could not initialize UART periphiral clock");
-        }
-
         /* Peripheral clock enable */
         __HAL_RCC_USART2_CLK_ENABLE();
-        __HAL_RCC_GPIOB_CLK_ENABLE();
+        __HAL_RCC_GPIOA_CLK_ENABLE();
 
         /**USART2 GPIO Configuration
-        PB3     ------> USART2_TX
-        PB4     ------> USART2_RX
+        PA2     ------> USART2_TX
+        PA3     ------> USART2_RX
         */
-        GPIO_InitStruct.Pin       = GPIO_PIN_3 | GPIO_PIN_4;
+        GPIO_InitStruct.Pin       = GPIO_PIN_2 | GPIO_PIN_3;
         GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
         GPIO_InitStruct.Pull      = GPIO_NOPULL;
         GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
         GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
-        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
         /* UART1 interrupt Init */
         HAL_NVIC_SetPriority(USART2_IRQn, UART_INTERRUPT_PRIORITY, 0);
@@ -313,7 +291,7 @@ void UART::DeInitPeripheral()
         __HAL_RCC_USART2_CLK_DISABLE();
 
         // ToDo: Deinit GPIO pins
-        HAL_GPIO_DeInit(GPIOB, GPIO_PIN_3 | GPIO_PIN_4);
+        HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2 | GPIO_PIN_3);
 
         /* UART1 interrupt DeInit */
         HAL_NVIC_DisableIRQ(USART2_IRQn);
@@ -328,17 +306,16 @@ void UART::InitPeripheral_DMA()
 {
     if (_port == PORT_UART2) {
         /* DMA controller clock enable */
-        __HAL_RCC_DMAMUX1_CLK_ENABLE();
         __HAL_RCC_DMA1_CLK_ENABLE();
 
         /* DMA interrupt init */
-        /* DMA1_Channel3_IRQn interrupt configuration */
-        HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, UART_INTERRUPT_PRIORITY, 0);
-        HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+        /* DMA1_Channel5_IRQn interrupt configuration */
+        HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, UART_INTERRUPT_PRIORITY, 0);
+        HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
 
-        /* DMA1_Channel4_IRQn interrupt configuration */
-        HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, UART_INTERRUPT_PRIORITY, 0);
-        HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
+        /* DMA1_Channel6_IRQn interrupt configuration */
+        HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, UART_INTERRUPT_PRIORITY, 0);
+        HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
     }
 }
 
@@ -447,7 +424,7 @@ void UART::StartDMATransfer(uint8_t* pData, uint16_t Size)
         _handle.hdmatx->XferAbortCallback = NULL;
 
         /* Enable the UART transmit DMA channel */
-        if (HAL_DMA_Start_IT(_handle.hdmatx, (uint32_t)_handle.pTxBuffPtr, (uint32_t)&_handle.Instance->TDR, Size) !=
+        if (HAL_DMA_Start_IT(_handle.hdmatx, (uint32_t)_handle.pTxBuffPtr, (uint32_t)&_handle.Instance->DR, Size) !=
             HAL_OK) {
             /* Set error code to DMA */
             _handle.ErrorCode = HAL_UART_ERROR_DMA;
@@ -457,7 +434,7 @@ void UART::StartDMATransfer(uint8_t* pData, uint16_t Size)
     }
 
     /* Clear the TC flag in the ICR register */
-    __HAL_UART_CLEAR_FLAG(&_handle, UART_CLEAR_TCF);
+    __HAL_UART_CLEAR_FLAG(&_handle, UART_FLAG_TC);
 
     /* Enable the DMA transfer for transmit request by setting the DMAT bit
     in the UART CR3 register */
@@ -479,7 +456,7 @@ void UART::TransmitBlockingAutoInterrupt(uint8_t* buffer, uint32_t bufLen)
 
     /* Start USART transmission : Will initiate TXE interrupt after TDR register is empty */
     _txRemainingBytes--;
-    _handle.Instance->TDR = *_txPointer++;
+    _handle.Instance->DR = *_txPointer++;
     if (_txRemainingBytes > 0) {
         /* Enable TXE interrupt */
         __HAL_UART_ENABLE_IT(&_handle, UART_IT_TXE);
@@ -515,7 +492,7 @@ void UART::TransmitBlockingManualInterrupt(uint8_t* buffer, uint32_t bufLen)
 
     do {
         // Transmit the data
-        _handle.Instance->TDR = *buffer++;
+        _handle.Instance->DR = *buffer++;
 
         // If last char to be sent, enable TC interrupt
         if (bufLen == 1) {
@@ -553,11 +530,11 @@ void UART::TransmitBlockingHardPolling(uint8_t* buffer, uint32_t bufLen)
 
         /* If last char to be sent, clear TC flag */
         if (bufLen == 1)
-            __HAL_UART_CLEAR_IT(&_handle, UART_CLEAR_TCF);
+            __HAL_UART_CLEAR_FLAG(&_handle, UART_FLAG_TC);
 
         /* Write character in Transmit Data register.
          * TXE flag is cleared by writing data in TDR register */
-        _handle.Instance->TDR = *buffer++;
+        _handle.Instance->DR = *buffer++;
     } while (--bufLen > 0);
 
     /* Wait for TC flag to be raised for last char */
@@ -682,7 +659,7 @@ void UART::UART_IncomingDataInterrupt(UART* uart)
         return;
     }
 
-    uint16_t uhdata = (uint16_t)READ_REG(uart->_handle.Instance->RDR);
+    uint16_t uhdata = (uint16_t)READ_REG(uart->_handle.Instance->DR);
     uart->BufferPush((uint8_t)(uhdata & 0x00FF)); // push into local buffer
     /* Clear RXNE interrupt flag */
     //__HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST); // should already have been cleared by reading
@@ -764,14 +741,11 @@ void UART::DMA_Error(UART* uart)
         // UART_EndTxTransfer(huart);
 
         /* Disable RXNE, PE and ERR (Frame error, noise error, overrun error) interrupts */
-        CLEAR_BIT(huart->Instance->CR1, (USART_CR1_RXNEIE_RXFNEIE | USART_CR1_PEIE));
-        CLEAR_BIT(huart->Instance->CR3, (USART_CR3_EIE | USART_CR3_RXFTIE));
+        CLEAR_BIT(huart->Instance->CR1, (USART_CR1_RXNEIE | USART_CR1_PEIE));
+        CLEAR_BIT(huart->Instance->CR3, USART_CR3_EIE);
 
         /* At end of Rx process, restore huart->RxState to Ready */
         huart->RxState = HAL_UART_STATE_READY;
-
-        /* Reset RxIsr function pointer */
-        huart->RxISR = NULL;
     }
 
     /* Stop UART DMA Rx request if ongoing */
@@ -780,14 +754,11 @@ void UART::DMA_Error(UART* uart)
         // UART_EndRxTransfer(huart);
 
         /* Disable RXNE, PE and ERR (Frame error, noise error, overrun error) interrupts */
-        CLEAR_BIT(huart->Instance->CR1, (USART_CR1_RXNEIE_RXFNEIE | USART_CR1_PEIE));
-        CLEAR_BIT(huart->Instance->CR3, (USART_CR3_EIE | USART_CR3_RXFTIE));
+        CLEAR_BIT(huart->Instance->CR1, (USART_CR1_RXNEIE | USART_CR1_PEIE));
+        CLEAR_BIT(huart->Instance->CR3, USART_CR3_EIE);
 
         /* At end of Rx process, restore huart->RxState to Ready */
         huart->RxState = HAL_UART_STATE_READY;
-
-        /* Reset RxIsr function pointer */
-        huart->RxISR = NULL;
     }
 
     huart->ErrorCode |= HAL_UART_ERROR_DMA;
@@ -848,63 +819,64 @@ void UART::UART_Interrupt(port_t port)
         return;
     }
 
-    uint32_t isrflags = READ_REG(uart->_handle.Instance->ISR);
+    uint32_t isrflags = READ_REG(uart->_handle.Instance->SR);
     uint32_t cr1its   = READ_REG(uart->_handle.Instance->CR1);
     uint32_t cr3its   = READ_REG(uart->_handle.Instance->CR3);
 
     uint32_t errorflags;
+    uint32_t dmarequest = 0x00U;
 
     /* If no error occurs */
-    errorflags = (isrflags & (uint32_t)(USART_ISR_PE | USART_ISR_FE | USART_ISR_ORE | USART_ISR_NE));
+    errorflags = (isrflags & (uint32_t)(USART_SR_PE | USART_SR_FE | USART_SR_ORE | USART_SR_NE));
     if (errorflags == RESET) {
         /* UART in mode Receiver ---------------------------------------------------*/
-        if (((isrflags & USART_ISR_RXNE_RXFNE) != 0U) &&
-            (((cr1its & USART_CR1_RXNEIE_RXFNEIE) != 0U) || ((cr3its & USART_CR3_RXFTIE) != 0U))) {
+        if (((isrflags & USART_SR_RXNE) != 0U) &&
+            ((cr1its & USART_CR1_RXNEIE) != 0U)) {
             UART_IncomingDataInterrupt(uart);
             return;
         }
     }
 
     /* If some errors occur */
-    if ((errorflags != 0U) && ((((cr3its & (USART_CR3_RXFTIE | USART_CR3_EIE)) != 0U) ||
-                                ((cr1its & (USART_CR1_RXNEIE_RXFNEIE | USART_CR1_PEIE)) != 0U)))) {
-        /* UART parity error interrupt occurred -------------------------------------*/
-        if (((isrflags & USART_ISR_PE) != RESET) && ((cr1its & USART_CR1_PEIE) != RESET)) {
-            __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_PEF);
-            uart->_ErrorCode |= UART_ERROR_PE;
-        }
+    if ((errorflags != RESET) && (((cr3its & USART_CR3_EIE) != RESET) || ((cr1its & (USART_CR1_RXNEIE | USART_CR1_PEIE)) != RESET)))
+    {
+	    /* UART parity error interrupt occurred ----------------------------------*/
+	    if (((isrflags & USART_SR_PE) != RESET) && ((cr1its & USART_CR1_PEIE) != RESET))
+	    {
+	    	uart->_handle.ErrorCode |= HAL_UART_ERROR_PE;
+	    }
 
-        /* UART frame error interrupt occurred --------------------------------------*/
-        if (((isrflags & USART_ISR_FE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET)) {
-            __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_FEF);
-            uart->_ErrorCode |= UART_ERROR_FE;
-        }
+	    /* UART noise error interrupt occurred -----------------------------------*/
+	    if (((isrflags & USART_SR_NE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET))
+	    {
+	    	uart->_handle.ErrorCode |= HAL_UART_ERROR_NE;
+	    }
 
-        /* UART noise error interrupt occurred --------------------------------------*/
-        if (((isrflags & USART_ISR_NE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET)) {
-            __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_NEF);
-            uart->_ErrorCode |= UART_ERROR_NE;
-        }
+	    /* UART frame error interrupt occurred -----------------------------------*/
+	    if (((isrflags & USART_SR_FE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET))
+        {
+	    	uart->_handle.ErrorCode |= HAL_UART_ERROR_FE;
+	    }
 
-        /* UART Over-Run interrupt occurred -----------------------------------------*/
-        if (((isrflags & USART_ISR_ORE) != 0U) &&
-            (((cr1its & USART_CR1_RXNEIE_RXFNEIE) != 0U) || ((cr3its & (USART_CR3_RXFTIE | USART_CR3_EIE)) != 0U))) {
-            __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_OREF);
-            uart->_ErrorCode |= UART_ERROR_ORE;
-        }
+	    /* UART Over-Run interrupt occurred --------------------------------------*/
+	    if (((isrflags & USART_SR_ORE) != RESET) && (((cr1its & USART_CR1_RXNEIE) != RESET) || ((cr3its & USART_CR3_EIE) != RESET)))
+	    {
+	    	uart->_handle.ErrorCode |= HAL_UART_ERROR_ORE;
+	    }
 
         /* Call UART Error Call back function if need be --------------------------*/
         if (uart->_ErrorCode != UART_ERROR_NONE) {
             /* UART in mode Receiver ---------------------------------------------------*/
-            if (((isrflags & USART_ISR_RXNE_RXFNE) != 0U) &&
-                (((cr1its & USART_CR1_RXNEIE_RXFNEIE) != 0U) || ((cr3its & USART_CR3_RXFTIE) != 0U))) {
+        	if (((isrflags & USART_SR_RXNE) != RESET) && ((cr1its & USART_CR1_RXNEIE) != RESET))
+        	{
                 UART_IncomingDataInterrupt(uart);
             }
 
             /* If Overrun error occurs, or if any error occurs in DMA mode reception,
-            consider error as blocking */
-            if (((uart->_ErrorCode & UART_ERROR_ORE) != RESET) ||
-                (HAL_IS_BIT_SET(uart->_handle.Instance->CR3, USART_CR3_DMAR))) {
+               consider error as blocking */
+            dmarequest = HAL_IS_BIT_SET(uart->_handle.Instance->CR3, USART_CR3_DMAR);
+            if (((uart->_handle.ErrorCode & HAL_UART_ERROR_ORE) != RESET) || dmarequest)
+            {
                 /* Blocking error : transfer is aborted
                 Set the UART state ready to be able to start again the process,
                 Disable Rx Interrupts, and disable Rx DMA request, if ongoing */
@@ -929,19 +901,11 @@ void UART::UART_Interrupt(port_t port)
             }
         }
         return;
-
     } /* End if some error occurs */
 
-    /* UART wakeup from Stop mode interrupt occurred ---------------------------*/
-    if (((isrflags & USART_ISR_WUF) != RESET) && ((cr3its & USART_CR3_WUFIE) != RESET)) {
-        __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_WUF);
-        return;
-    }
-
     /* UART in mode Transmitter ------------------------------------------------*/
-    if (((isrflags & USART_ISR_TXE_TXFNF) != 0U) &&
-        (((cr1its & USART_CR1_TXEIE_TXFNFIE) != 0U) || ((cr3its & USART_CR3_TXFTIE) != 0U))) {
-        __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_TXFECF);
+    if (((isrflags & USART_SR_TXE) != RESET) && ((cr1its & USART_CR1_TXEIE) != RESET)) {
+    	__HAL_UART_CLEAR_FLAG(&uart->_handle, UART_FLAG_TXE);
         if (uart->_txRemainingBytes > 0) { // interrupt based transmission
             if (uart->_txRemainingBytes == 1) {
                 /* Disable TXE interrupt */
@@ -952,7 +916,7 @@ void UART::UART_Interrupt(port_t port)
             }
 
             // Transmit the next byte from the buffer
-            uart->_handle.Instance->TDR = *uart->_txPointer++;
+            uart->_handle.Instance->DR = *uart->_txPointer++;
             uart->_txRemainingBytes--;
         } else { // polling based transmission
             /* Disable the Transmit Data Register Empty interrupt */
@@ -970,8 +934,8 @@ void UART::UART_Interrupt(port_t port)
     }
 
     /* UART in mode Transmitter (transmission end) -----------------------------*/
-    if (((isrflags & USART_ISR_TC) != RESET) && ((cr1its & USART_CR1_TCIE) != RESET)) {
-        __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_TCF);
+    if (((isrflags & USART_SR_TC) != RESET) && ((cr1its & USART_CR1_TCIE) != RESET)) {
+    	__HAL_UART_CLEAR_FLAG(&uart->_handle, UART_FLAG_TC);
         __HAL_UART_DISABLE_IT(&uart->_handle, UART_IT_TC);
 
 #ifdef USE_FREERTOS
@@ -984,20 +948,9 @@ void UART::UART_Interrupt(port_t port)
         return;
     }
 
-    /* UART TX Fifo Empty occurred ----------------------------------------------*/
-    if (((isrflags & USART_ISR_TXFE) != 0U) && ((cr1its & USART_CR1_TXFEIE) != 0U)) {
-        __HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_TXFECF);
-        return;
-    }
-
-    /* UART RX Fifo Full occurred ----------------------------------------------*/
-    if (((isrflags & USART_ISR_RXFF) != 0U) && ((cr1its & USART_CR1_RXFFIE) != 0U)) {
-        return;
-    }
-
     /* Check for IDLE line interrupt */
-    if (((isrflags & USART_ISR_IDLE) != 0U) && ((cr1its & USART_CR1_IDLEIE) != 0U)) {
-        //__HAL_UART_CLEAR_IT(&uart->_handle, UART_CLEAR_IDLEF); // Clear IDLE line flag
+    if (((isrflags & USART_SR_IDLE) != 0U) && ((cr1its & USART_CR1_IDLEIE) != 0U)) {
+    	//__HAL_UART_CLEAR_FLAG(&uart->_handle, UART_FLAG_IDLE);
     	// Has to use clear macro (see https://community.st.com/s/question/0D50X00009XkXxk/stm32f205-usart-idle-interrupt-fires-for-no-reason)
     	__HAL_UART_CLEAR_IDLEFLAG(&uart->_handle);
         // ToDo: If DMA is enabled, then check for new data here
@@ -1053,7 +1006,7 @@ void UART::DMA_TX_Interrupt(UART* uart)
 /**
  * @brief This function handles DMA1 channel3 global interrupt.
  */
-void DMA1_Channel3_IRQHandler(void)
+void DMA1_Stream5_IRQHandler(void)
 {
     if (!UART::objUART2) {
         ERROR("UART DMA interrupt for unconfigured port");
@@ -1066,7 +1019,7 @@ void DMA1_Channel3_IRQHandler(void)
 /**
  * @brief This function handles DMA1 channel4 global interrupt.
  */
-void DMA1_Channel4_IRQHandler(void)
+void DMA1_Stream6_IRQHandler(void)
 {
     if (!UART::objUART2) {
         ERROR("UART DMA interrupt for unconfigured port");
@@ -1078,7 +1031,8 @@ void DMA1_Channel4_IRQHandler(void)
 
 void UART::DMATransmitCplt(DMA_HandleTypeDef* hdma)
 {
-    if (hdma->Instance == DMA1_Channel4 && UART::objUART2) {
+    UART_HandleTypeDef *huart = (UART_HandleTypeDef *)((DMA_HandleTypeDef *)hdma)->Parent;
+    if (huart->Instance == USART2 && UART::objUART2) {
         UART::DMA_TX_Completed(UART::objUART2);
     } else {
         ERROR("UART interrupt for unconfigured port");
@@ -1088,7 +1042,8 @@ void UART::DMATransmitCplt(DMA_HandleTypeDef* hdma)
 
 void UART::DMAError(DMA_HandleTypeDef* hdma)
 {
-    if (hdma->Instance == DMA1_Channel4 && UART::objUART2) {
+    UART_HandleTypeDef *huart = (UART_HandleTypeDef *)((DMA_HandleTypeDef *)hdma)->Parent;
+    if (huart->Instance == USART2 && UART::objUART2) {
         UART::DMA_Error(UART::objUART2);
     } else {
         ERROR("UART interrupt for unconfigured port");

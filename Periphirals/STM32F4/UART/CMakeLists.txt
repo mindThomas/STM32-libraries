@@ -1,0 +1,22 @@
+set(LIBRARY_NAME STM32F4_UART)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::F4::UART
+    HAL::STM32::F4::UARTEx
+    HAL::STM32::F4::DMA
+    HAL::STM32::F4::RCC
+    HAL::STM32::F4::RCCEx
+    HAL::STM32::F4::GPIO
+    HAL::STM32::F4::CORTEX
+    CMSIS::STM32::F4)
+set(LIBRARY_SOURCES UART.cpp)
+
+message("       -- ${LIBRARY_NAME}")
+
+add_library(${LIBRARY_NAME} INTERFACE)
+target_sources(${LIBRARY_NAME} INTERFACE ${LIBRARY_SOURCES})
+target_link_libraries(${LIBRARY_NAME} INTERFACE ${LIBRARY_DEPENDENCIES})
+get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
+
+# Defines STM32G4_UART_USE_DEBUG when option is enabled
+add_library_option(${LIBRARY_NAME} DEBUG Debug)
