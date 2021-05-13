@@ -24,6 +24,7 @@
 #include "cmsis_os.h"
 #elif defined(USE_FREERTOS)
 #include "FreeRTOS.h"
+#include "semphr.h"
 #endif
 
 class IO

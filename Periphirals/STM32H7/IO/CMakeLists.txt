@@ -15,4 +15,4 @@ get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
 # Defines STM32H7_IO_USE_DEBUG when option is enabled
-add_library_option(${LIBRARY_NAME} DEBUG Debug)
+add_library_option_with_dependency(${LIBRARY_NAME} DEBUG Debug)

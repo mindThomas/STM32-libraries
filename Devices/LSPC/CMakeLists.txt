@@ -11,9 +11,9 @@ get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
 
 # Defines LSPC_USE_DEBUG when option is enabled
-add_library_option(${LIBRARY_NAME} DEBUG Debug)
+add_library_option_with_dependency(${LIBRARY_NAME} DEBUG Debug)
 
 # Define the type of LSPC interface
 # Select using e.g. 'enable_option(your_target LSPC_ "UART")'
-add_library_option(${LIBRARY_NAME} UART $<TARGET_PROPERTY:DEVICE_FAMILY>_UART)
-add_library_option(${LIBRARY_NAME} USB $<TARGET_PROPERTY:DEVICE_FAMILY>_USBCDC)
+add_library_option_with_dependency(${LIBRARY_NAME} UART $<TARGET_PROPERTY:DEVICE_FAMILY>_UART)
+add_library_option_with_dependency(${LIBRARY_NAME} USB $<TARGET_PROPERTY:DEVICE_FAMILY>_USBCDC)
