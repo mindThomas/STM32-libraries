@@ -68,7 +68,7 @@ class SyncedPWMADC
 	#include "SyncedPWMADC_Config.hpp"
 
 	private:
-		const enum : uint8_t {
+        static constexpr enum : uint8_t {
 			CYCLES_2_5, // ADC_SAMPLETIME_2CYCLES_5
 			CYCLES_6_5, // ADC_SAMPLETIME_6CYCLES_5
 			CYCLES_12_5, // ADC_SAMPLETIME_12CYCLES_5
@@ -78,27 +78,27 @@ class SyncedPWMADC
 			CYCLES_247_5, // ADC_SAMPLETIME_247CYCLES_5
 			CYCLES_640_5 // ADC_SAMPLETIME_640CYCLES_5
 		} ADC_SAMPLE_TIME = CYCLES_47_5;
-		const enum : uint8_t {
+        static constexpr enum : uint8_t {
 			OVERSAMPLING_0 = 1, // 1 sample, OversamplingMode = DISABLE
 			OVERSAMPLING_2 = 2, // 2 samples, ADC_OVERSAMPLING_RATIO_2
 			OVERSAMPLING_4 = 4, // 4 samples, ADC_OVERSAMPLING_RATIO_4
 			OVERSAMPLING_8 = 8, // 8 samples, ADC_OVERSAMPLING_RATIO_8
 			OVERSAMPLING_16 = 16, // 16 samples, ADC_OVERSAMPLING_RATIO_16
 		} ADC_OVERSAMPLING = OVERSAMPLING_0;
-		const uint16_t ADC_SAMPLE_TIME_OVERHEAD_US = 1; // add 1 us ADC sample overhead time on top of the pre-computed ADC sample+conversion time
-		const uint16_t ADC_PWM_RIPPLE_TIME_US = 8; // transient ripple from PWM level change - keep ADC sampling (whole ADC capture period) away from PWM level changes by at least this amount
+        static constexpr uint16_t ADC_SAMPLE_TIME_OVERHEAD_US = 1; // add 1 us ADC sample overhead time on top of the pre-computed ADC sample+conversion time
+        static constexpr uint16_t ADC_PWM_RIPPLE_TIME_US = 8; // transient ripple from PWM level change - keep ADC sampling (whole ADC capture period) away from PWM level changes by at least this amount
 
 		// Debugging parameters
-		const bool DEBUG_MODE_ENABLED = true;
-		const bool ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT = false; // OBS. Current sense sampling will only work properly when driving forward
-		const bool SAMPLE_IN_EVERY_PWM_CYCLE = false; // setting this to true effectively sets "_samplingInterval=1" and "_samplingInterval=1"
+        static constexpr bool DEBUG_MODE_ENABLED = false;
+        static constexpr bool ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT = false; // OBS. Current sense sampling will only work properly when driving forward
+        static constexpr bool SAMPLE_IN_EVERY_PWM_CYCLE = false; // setting this to true effectively sets "_samplingInterval=1" and "_samplingInterval=1"
 
 		// Back-EMF hysteresis - difference should be larger than expected variance in Back-EMF due to rotation
-		const float BEMF_SWITCH_TO_HIGH_RANGE_HYSTERESIS_THRESHOLD = 3.2f; // [V]
-		const float BEMF_SWITCH_TO_LOW_RANGE_HYSTERESIS_THRESHOLD = 1.5f; // [V]
+        static constexpr float BEMF_SWITCH_TO_HIGH_RANGE_HYSTERESIS_THRESHOLD = 3.2f; // [V]
+        static constexpr float BEMF_SWITCH_TO_LOW_RANGE_HYSTERESIS_THRESHOLD = 1.5f; // [V]
 
 	public:
-		SyncedPWMADC(uint32_t frequency = 10000, float maxDuty = 0.98);
+		SyncedPWMADC(uint32_t frequency = 10000, float maxDuty = 0.98); // we are limiting the max duty to 98% due to observed problems with the G431 ESC board operating at 100% duty
 		~SyncedPWMADC();
 
 	public:
@@ -301,7 +301,7 @@ class SyncedPWMADC
 		void SetOperatingMode(OperatingMode_t mode);
 		OperatingMode_t GetOperatingMode(void);
 		void SetBemfRange(bool auto_range = true, bool high_range = true, bool alternating_range = false);
-		void SetPWMFrequency(uint32_t frequency, bool fixed_prescaler = false);
+		void SetPWMFrequency(uint32_t frequency, bool fixed_prescaler = false, bool compensateForSampleTime = true);
 		//void SetDutyCycle(float duty);
 		float GetCurrentDutyCycle();
 		bool GetCurrentDirection();
@@ -325,7 +325,7 @@ class SyncedPWMADC
 		void WaitForNewQueuedSample();
 
 	private:
-		void RecomputePredefinedCounts();
+		void RecomputePredefinedCounts(const bool compensateForSampleTime = true);
 		static void LatchTimerSettings(SyncedPWMADC * obj);
 
 	public:

@@ -28,6 +28,9 @@
 		void ADC_ConfigureBackEMFSampling();
 		void ADC_ConfigureCoastModeSampling();
 
+        void EnableFullOn(bool Direction);
+        void DisableFullOn();
+
 		void InitTimer(uint32_t frequency);
 		void DeInitTimer();
 		void Timer_ConfigureBrakeMode();
@@ -36,7 +39,7 @@
 
 		void InitADCs();
 		void DeInitADCs();
-		uint32_t ADC_ChannelIndexToADCRank(uint8_t chIndex);
+		uint32_t ADC_GetADCRank(uint8_t rank);
 		void ADC_Start(ADC_HandleTypeDef * hadc);
 		void ADC_Stop(ADC_HandleTypeDef * hadc);
 
@@ -45,6 +48,7 @@
 
 		void InitOpAmps();
 		void DeInitOpAmps();
+        void DisableOpAmpExternalOutputs();
 
 	public:
 		void SetSamplingInterval(uint16_t samplingInterval);

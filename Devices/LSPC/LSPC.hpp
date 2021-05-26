@@ -42,10 +42,17 @@
 
 #include <vector>
 
-#define LSPC_MAXIMUM_PACKAGE_LENGTH 250
-#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH 50 // maximum 50 asynchronous packages in queue
+#include <mallocTracker.hpp>
+
+#define LSPC_MAXIMUM_PACKAGE_LENGTH 250 // limited by LSPC protocol!
 #define LSPC_RX_PROCESSING_THREAD_STACK_SIZE 256
 #define LSPC_TX_TRANSMITTER_THREAD_STACK_SIZE (LSPC_MAXIMUM_PACKAGE_LENGTH)
+
+#ifdef LSPC_TX_QUEUE_LENGTH
+#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH LSPC_TX_QUEUE_LENGTH
+#else
+#define LSPC_ASYNCHRONOUS_QUEUE_LENGTH 50 // maximum 50 asynchronous packages in queue by default
+#endif
 
 namespace lspc {
 

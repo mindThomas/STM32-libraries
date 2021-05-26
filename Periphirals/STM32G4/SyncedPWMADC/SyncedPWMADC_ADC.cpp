@@ -18,6 +18,8 @@
 
 #include "SyncedPWMADC.hpp"
 
+#include <Priorities.h>
+
 #include <math.h>   // for roundf
 #include <string.h> // for memset
 
@@ -82,10 +84,7 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PA2     ------> OPAMP1_VOUT
     PA3     ------> OPAMP1_VINM
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_1 | GPIO_PIN_3;
-    if (ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
-        GPIO_InitStruct.Pin |= GPIO_PIN_2;
-    }
+    GPIO_InitStruct.Pin = GPIO_PIN_1 | GPIO_PIN_3 | GPIO_PIN_2; // VOUT is included for calibration initially
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -97,7 +96,7 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PA6     ------> OPAMP2_VOUT
     PA7     ------> OPAMP2_VINP
     */
-    GPIO_InitStruct.Pin  = GPIO_PIN_5 | GPIO_PIN_7;
+    GPIO_InitStruct.Pin  = GPIO_PIN_5 | GPIO_PIN_7 | GPIO_PIN_6; // VOUT is included for calibration initially
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -109,10 +108,40 @@ void SyncedPWMADC::ConfigureAnalogPins()
     PB1     ------> OPAMP3_VOUT
     PB2     ------> OPAMP3_VINM
     */
-    GPIO_InitStruct.Pin  = GPIO_PIN_0 | GPIO_PIN_2;
+    GPIO_InitStruct.Pin  = GPIO_PIN_0 | GPIO_PIN_2 | GPIO_PIN_1; // VOUT is included for calibration initially
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+void SyncedPWMADC::DisableOpAmpExternalOutputs()
+{
+    // Set VOUT to LOW since it is not used (OPAMP internal output) and should not interfear with the OPAMP output
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    /* Current sense Ch1 */
+    // Only disable if we don't want to keep the output for debugging
+    if (!ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
+        GPIO_InitStruct.Pin = GPIO_PIN_2;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+        HAL_GPIO_WritePin(GPIOA, GPIO_InitStruct.Pin, GPIO_PIN_RESET);
+    }
+
+    /* Current sense Ch2 */
+    GPIO_InitStruct.Pin = GPIO_PIN_6;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    HAL_GPIO_WritePin(GPIOA, GPIO_InitStruct.Pin, GPIO_PIN_RESET);
+
+    /* Current sense Ch3 */
+    GPIO_InitStruct.Pin = GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    HAL_GPIO_WritePin(GPIOB, GPIO_InitStruct.Pin, GPIO_PIN_RESET);
 }
 
 void SyncedPWMADC::DeInitAnalogPins()
@@ -129,23 +158,28 @@ void SyncedPWMADC::InitOpAmps()
 {
     OPAMP_HandleTypeDef hOpAmp = {0};
 
-    hOpAmp.Init.PowerMode              = OPAMP_POWERMODE_NORMAL;
+    hOpAmp.Init.PowerMode              = OPAMP_POWERMODE_NORMALSPEED;
     hOpAmp.Init.Mode                   = OPAMP_PGA_MODE;
     hOpAmp.Init.NonInvertingInput      = OPAMP_NONINVERTINGINPUT_IO0;
     hOpAmp.Init.TimerControlledMuxmode = OPAMP_TIMERCONTROLLEDMUXMODE_DISABLE;
     hOpAmp.Init.PgaConnect             = OPAMP_PGA_CONNECT_INVERTINGINPUT_IO0_BIAS;
     hOpAmp.Init.PgaGain                = OPAMP_PGA_GAIN_16_OR_MINUS_15;
     hOpAmp.Init.UserTrimming           = OPAMP_TRIMMING_FACTORY;
-    hOpAmp.Init.InternalOutput         = ENABLE;
 
     {
         OPAMP_HandleTypeDef handle = hOpAmp;
         handle.Instance            = OPAMP1;
-        if (ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
-            handle.Init.InternalOutput = DISABLE; // in debug mode we sample the external output
-        }
+        handle.Init.InternalOutput = DISABLE; // can not use internal output during calibration
         if (HAL_OPAMP_Init(&handle) != HAL_OK) {
             ERROR("Could not initialize OPAMP1");
+        }
+        if (HAL_OPAMP_SelfCalibrate(&handle) != HAL_OK) {
+            ERROR("Could not calibrate OPAMP1");
+        }
+        if (ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT) {
+            CLEAR_BIT(handle.Instance->CSR, OPAMP_CSR_OPAMPINTEN); // in debug mode we sample the external output
+        } else {
+            SET_BIT(handle.Instance->CSR, OPAMP_CSR_OPAMPINTEN); // enable internal output mode
         }
         if (HAL_OPAMP_Start(&handle) != HAL_OK) {
             ERROR("Could not start OPAMP1");
@@ -154,9 +188,11 @@ void SyncedPWMADC::InitOpAmps()
     {
         OPAMP_HandleTypeDef handle = hOpAmp;
         handle.Instance            = OPAMP2;
+        handle.Init.InternalOutput = DISABLE; // can not use internal output during calibration
         if (HAL_OPAMP_Init(&handle) != HAL_OK) {
             ERROR("Could not initialize OPAMP2");
         }
+        SET_BIT(handle.Instance->CSR, OPAMP_CSR_OPAMPINTEN); // enable internal output mode
         if (HAL_OPAMP_Start(&handle) != HAL_OK) {
             ERROR("Could not start OPAMP2");
         }
@@ -164,13 +200,17 @@ void SyncedPWMADC::InitOpAmps()
     {
         OPAMP_HandleTypeDef handle = hOpAmp;
         handle.Instance            = OPAMP3;
+        handle.Init.InternalOutput = DISABLE; // can not use internal output during calibration
         if (HAL_OPAMP_Init(&handle) != HAL_OK) {
             ERROR("Could not initialize OPAMP3");
         }
+        SET_BIT(handle.Instance->CSR, OPAMP_CSR_OPAMPINTEN); // enable internal output mode
         if (HAL_OPAMP_Start(&handle) != HAL_OK) {
             ERROR("Could not start OPAMP3");
         }
     }
+
+    DisableOpAmpExternalOutputs();
 }
 
 void SyncedPWMADC::DeInitOpAmps()
@@ -222,6 +262,7 @@ void SyncedPWMADC::InitADCs()
     hADC_Config.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
     hADC_Config.Init.GainCompensation      = 0;
     hADC_Config.Init.ScanConvMode          = ADC_SCAN_ENABLE;
+    hADC_Config.Init.SamplingMode          = ADC_SAMPLING_MODE_NORMAL;
     hADC_Config.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
     hADC_Config.Init.LowPowerAutoWait      = DISABLE;
     hADC_Config.Init.ContinuousConvMode    = DISABLE; // Disabled since we want the Timer to trigger the sample
@@ -279,8 +320,9 @@ void SyncedPWMADC::InitADCs()
     ADC_ConfigureCurrentSenseSampling();
 
     /* ADC2 interrupt Init */
-    HAL_NVIC_SetPriority(ADC1_2_IRQn, 1, 0);
-    HAL_NVIC_EnableIRQ(ADC1_2_IRQn);
+    // This interrupt is not needed since we are using DMA
+    //HAL_NVIC_SetPriority(ADC1_2_IRQn, 1, 0);
+    //HAL_NVIC_EnableIRQ(ADC1_2_IRQn);
 
     /* Calibrate the ADCs */
     HAL_ADCEx_Calibration_Start(&hADC1, ADC_SINGLE_ENDED);
@@ -388,7 +430,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
                 Channels.VSENSE1.ADC   = ADCidx;
                 Channels.VSENSE1.Index = numberOfChannels;
             }
-            sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank = ADC_GetADCRank(numberOfChannels);
             if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK) {
                 ERROR("Could not configure channel on ADC1");
             }
@@ -397,7 +439,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 
         {                                              /* Internal Vref */
             sConfig.Channel     = ADC_CHANNEL_VREFINT; // Vref
-            sConfig.Rank        = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank        = ADC_GetADCRank(numberOfChannels);
             Channels.VREF.ADC   = ADCidx;
             Channels.VREF.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK) {
@@ -407,7 +449,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
         }
 
         /* Set number of ranks in regular group sequencer of ADC1 */
-        Channels.ADCnumChannels[0] = numberOfChannels;
+        Channels.ADCnumChannels[ADCidx-1] = numberOfChannels;
         MODIFY_REG(hADC1.Instance->SQR1, ADC_SQR1_L, (numberOfChannels - (uint8_t)1));
     }
 
@@ -419,7 +461,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
             sConfig.Channel        = ADC_CHANNEL_VOPAMP3_ADC2; // Current sense 3
             Channels.VSENSE3.ADC   = ADCidx;
             Channels.VSENSE3.Index = numberOfChannels;
-            sConfig.Rank           = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank           = ADC_GetADCRank(numberOfChannels);
             if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK) {
                 ERROR("Could not configure channel on ADC2");
             }
@@ -428,7 +470,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
 
         {                                        /* Vbus */
             sConfig.Channel     = ADC_CHANNEL_1; // Vbus
-            sConfig.Rank        = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank        = ADC_GetADCRank(numberOfChannels);
             Channels.VBUS.ADC   = ADCidx;
             Channels.VBUS.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK) {
@@ -438,7 +480,7 @@ void SyncedPWMADC::ADC_ConfigureCurrentSenseSampling()
         }
 
         /* Set number of ranks in regular group sequencer of ADC2 */
-        Channels.ADCnumChannels[1] = numberOfChannels;
+        Channels.ADCnumChannels[ADCidx-1] = numberOfChannels;
         MODIFY_REG(hADC2.Instance->SQR1, ADC_SQR1_L, (numberOfChannels - (uint8_t)1));
     }
 
@@ -554,7 +596,7 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 
         {                                          /* BEMF3 */
             sConfig.Channel      = ADC_CHANNEL_14; // BEMF3
-            sConfig.Rank         = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank         = ADC_GetADCRank(numberOfChannels);
             Channels.BEMF3.ADC   = ADCidx;
             Channels.BEMF3.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK) {
@@ -565,7 +607,7 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 
         {                                              /* Internal Vref */
             sConfig.Channel     = ADC_CHANNEL_VREFINT; // Vref
-            sConfig.Rank        = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank        = ADC_GetADCRank(numberOfChannels);
             Channels.VREF.ADC   = ADCidx;
             Channels.VREF.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK) {
@@ -585,7 +627,7 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 
         {                                          /* BEMF1 */
             sConfig.Channel      = ADC_CHANNEL_17; // BEMF1
-            sConfig.Rank         = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank         = ADC_GetADCRank(numberOfChannels);
             Channels.BEMF1.ADC   = ADCidx;
             Channels.BEMF1.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK) {
@@ -596,7 +638,7 @@ void SyncedPWMADC::ADC_ConfigureBackEMFSampling()
 
         {                                        /* Vbus */
             sConfig.Channel     = ADC_CHANNEL_1; // Vbus
-            sConfig.Rank        = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank        = ADC_GetADCRank(numberOfChannels);
             Channels.VBUS.ADC   = ADCidx;
             Channels.VBUS.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK) {
@@ -730,7 +772,7 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
                 Channels.VSENSE1.ADC   = ADCidx;
                 Channels.VSENSE1.Index = numberOfChannels;
             }
-            sConfig.Rank = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank = ADC_GetADCRank(numberOfChannels);
             if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK) {
                 ERROR("Could not configure channel on ADC1");
             }
@@ -739,7 +781,7 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
 
         {                                          /* BEMF3 */
             sConfig.Channel      = ADC_CHANNEL_14; // BEMF3
-            sConfig.Rank         = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank         = ADC_GetADCRank(numberOfChannels);
             Channels.BEMF3.ADC   = ADCidx;
             Channels.BEMF3.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK) {
@@ -750,7 +792,7 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
 
         {                                              /* Internal Vref */
             sConfig.Channel     = ADC_CHANNEL_VREFINT; // Vref
-            sConfig.Rank        = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank        = ADC_GetADCRank(numberOfChannels);
             Channels.VREF.ADC   = ADCidx;
             Channels.VREF.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC1, &sConfig) != HAL_OK) {
@@ -772,7 +814,7 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
             sConfig.Channel        = ADC_CHANNEL_VOPAMP3_ADC2; // Current sense 3
             Channels.VSENSE3.ADC   = ADCidx;
             Channels.VSENSE3.Index = numberOfChannels;
-            sConfig.Rank           = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank           = ADC_GetADCRank(numberOfChannels);
             if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK) {
                 ERROR("Could not configure channel on ADC2");
             }
@@ -781,7 +823,7 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
 
         {                                          /* BEMF1 */
             sConfig.Channel      = ADC_CHANNEL_17; // BEMF1
-            sConfig.Rank         = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank         = ADC_GetADCRank(numberOfChannels);
             Channels.BEMF1.ADC   = ADCidx;
             Channels.BEMF1.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK) {
@@ -792,7 +834,7 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
 
         {                                        /* Vbus */
             sConfig.Channel     = ADC_CHANNEL_1; // Vbus
-            sConfig.Rank        = ADC_ChannelIndexToADCRank(numberOfChannels);
+            sConfig.Rank        = ADC_GetADCRank(numberOfChannels);
             Channels.VBUS.ADC   = ADCidx;
             Channels.VBUS.Index = numberOfChannels;
             if (HAL_ADC_ConfigChannel(&hADC2, &sConfig) != HAL_OK) {
@@ -825,9 +867,9 @@ void SyncedPWMADC::ADC_ConfigureCoastModeSampling()
     }
 }
 
-uint32_t SyncedPWMADC::ADC_ChannelIndexToADCRank(uint8_t chIndex)
+uint32_t SyncedPWMADC::ADC_GetADCRank(uint8_t rank)
 {
-    switch (chIndex) {
+    switch (rank) {
         case 0:
             return ADC_REGULAR_RANK_1;
         case 1:
@@ -931,10 +973,10 @@ void SyncedPWMADC::InitDMAs()
 
     /* DMA interrupt init */
     /* DMA1_Channel1_IRQn interrupt configuration */
-    HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 3, 0);
+    HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, ADC_DMA_INTERRUPT_PRIORITY, 0);
     HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 
-    HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 3, 0);
+    HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, ADC_DMA_INTERRUPT_PRIORITY, 0);
     HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 }
 
@@ -1095,13 +1137,13 @@ void ADC1_2_IRQHandler(void)
 void DMA1_Channel1_IRQHandler(void)
 {
     if (SyncedPWMADC::globalObject)
-        HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject
-                              ->hDMA_ADC1); // The HAL interrupt routine called here is fast, so it's OK to use it.
+        // The HAL interrupt routine called here is fast, so it's OK to use it.
+        HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject->hDMA_ADC1);
 }
 
 void DMA1_Channel2_IRQHandler(void)
 {
     if (SyncedPWMADC::globalObject)
-        HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject
-                              ->hDMA_ADC2); // The HAL interrupt routine called here is fast, so it's OK to use it.
+        // The HAL interrupt routine called here is fast, so it's OK to use it.
+        HAL_DMA_IRQHandler(&SyncedPWMADC::globalObject->hDMA_ADC2);
 }

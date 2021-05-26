@@ -33,8 +33,8 @@
 class UART
 {
 	private:
-		const int CALLBACK_THREAD_POP_BUFFER_SIZE = 200;
-		const int DMA_RX_MIN_BUFFER_SIZE = 100;
+		static constexpr int CALLBACK_THREAD_POP_BUFFER_SIZE = 200;
+        static constexpr int DMA_RX_MIN_BUFFER_SIZE = 100;
 
 	public:
 		const uint32_t BaudRate;
@@ -111,7 +111,7 @@ class UART
 		bool _rxAvailableOnIdle;
 	#ifdef USE_FREERTOS
 		TaskHandle_t _callbackTaskHandle;
-		SemaphoreHandle_t _resourceSemaphore;
+		SemaphoreHandle_t _resourceMutex;
 		SemaphoreHandle_t _transmitFinished;
 		SemaphoreHandle_t _RXdataAvailable;
     #else

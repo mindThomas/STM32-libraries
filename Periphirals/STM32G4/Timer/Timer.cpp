@@ -248,6 +248,11 @@ void Timer::Wait(uint32_t MicrosToWait)
 #ifdef USE_FREERTOS
     if (!_waitSemaphore) {
         _waitSemaphore           = xSemaphoreCreateBinary();
+        if (_waitSemaphore == NULL) {
+            ERROR("Could not create Timer Wait semaphore");
+            return;
+        }
+        vQueueAddToRegistry(_waitSemaphore, "Timer Wait");
         _hRes->callbackSemaphore = _waitSemaphore;
     }
 #endif

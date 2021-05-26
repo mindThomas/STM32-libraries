@@ -21,11 +21,13 @@
 #include <math.h>   // for roundf
 #include <string.h> // for memset
 
-#include <IO/IO.hpp>
 #include <Encoder/Encoder.hpp>
+#include <IO/IO.hpp>
 
 #ifdef STM32G4_SYNCEDPWMADC_USE_DEBUG
+
 #include <Debug/Debug.h>
+
 #else
 #define ERROR(msg) ((void)0U); // not implemented
 #endif
@@ -171,10 +173,10 @@ void SyncedPWMADC::SetBemfRange(bool auto_range, bool high_range, bool alternati
     timerSettingsNext.BemfAlternateRange = alternating_range;
 }
 
-void SyncedPWMADC::SetPWMFrequency(uint32_t frequency, bool fixed_prescaler)
+void SyncedPWMADC::SetPWMFrequency(uint32_t frequency, bool fixed_prescaler, const bool compensateForSampleTime)
 {
     Timer_Configure(frequency, fixed_prescaler);
-    RecomputePredefinedCounts(); // recompute at different frequency
+    RecomputePredefinedCounts(compensateForSampleTime); // recompute at different frequency
 }
 
 /*
@@ -223,16 +225,22 @@ SyncedPWMADC::CombinedSample_t SyncedPWMADC::GetLatestSample()
     return sample;
 }
 
-void SyncedPWMADC::RecomputePredefinedCounts()
+void SyncedPWMADC::RecomputePredefinedCounts(const bool compensateForSampleTime)
 {
     const uint32_t ADC_SAMPLE_TIME_US = _ADC_SampleTime_Total_us + ADC_SAMPLE_TIME_OVERHEAD_US;
     const uint16_t PWM_RIPPLE_TIME_US = ADC_PWM_RIPPLE_TIME_US;
 
-    // Duty cycle is defined as:
-    // Duty Cycle = (CCR+1) / (ARR+1)
-    // So 100% duty cycle is achieved by setting CCR=ARR
+    /* From the "PWM edge-aligned mode" section of the Reference Manual:
+        In the following example, we consider PWM mode 1. The reference PWM signal
+        tim_ocxref is high as long as TIMx_CNT < TIMx_CCRx else it becomes low. If the
+        compare value in TIMx_CCRx is greater than the auto-reload value (in TIMx_ARR)
+        then tim_ocxref is held at ‘1’.
+    */
+    // Duty cycle is thus defined as:
+    // Duty Cycle = CCR / (ARR+1)
+    // So 100% duty cycle is achieved by setting CCR=ARR+1
     // Note that CCR is the Capture Compare Register value, computed as
-    // CCR = (Duty * (ARR+1)) - 1
+    // CCR = Duty * (ARR+1)
     PredefinedCounts.End = hTimer.Init.Period + 1; // ARR+1
 
     // Sample_DutyPct = ADC_SAMPLE_TIME_US*1e-6 / (1/PWM_frequency)
@@ -241,6 +249,11 @@ void SyncedPWMADC::RecomputePredefinedCounts()
 
     float Ripple_DutyPct    = (float)((uint32_t)(timerSettingsNext.Frequency) * PWM_RIPPLE_TIME_US) / 1000000.f;
     PredefinedCounts.Ripple = (uint16_t)(ceilf(fabsf(Ripple_DutyPct) * PredefinedCounts.End));
+
+    if (!compensateForSampleTime) {
+        PredefinedCounts.Sample = 0;
+        PredefinedCounts.Ripple = 0;
+    }
 }
 
 void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
@@ -262,12 +275,19 @@ void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
     const uint16_t& End_Count    = PredefinedCounts.End;
     const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
     const uint16_t& Sample_Count = PredefinedCounts.Sample;
-    // Duty cycle is defined as:
-    // Duty Cycle = (CCR+1) / (ARR+1)
-    // So 100% duty cycle is achieved by setting CCR=ARR
-    const uint16_t Duty_Count = (uint16_t)(
-      roundf(fabsf(timerSettingsNext.DutyCycle) *
-             End_Count)); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+    /* From the "PWM edge-aligned mode" section of the Reference Manual:
+    In the following example, we consider PWM mode 1. The reference PWM signal
+    tim_ocxref is high as long as TIMx_CNT < TIMx_CCRx else it becomes low. If the
+    compare value in TIMx_CCRx is greater than the auto-reload value (in TIMx_ARR)
+    then tim_ocxref is held at ‘1’.
+    */
+    // Duty cycle is thus defined as:
+    // Duty Cycle = CCR / (ARR+1)
+    // So 100% duty cycle is achieved by setting CCR=ARR+1
+    // Note that CCR is the Capture Compare Register value, computed as
+    // CCR = Duty * (ARR+1)
+    const uint16_t Duty_Count = (uint16_t)(roundf(fabsf(timerSettingsNext.DutyCycle) * End_Count));
 
     // Sanity check
     if (End_Count <= Sample_Count) {
@@ -290,6 +310,17 @@ void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
         sampleLocation2 = (End_Count + Duty_Count + Ripple_Count) / 2 - Sample_Count;
     }
 
+    // Ensure that the sample locations are not too close
+    if (sampleLocation2 < (sampleLocation1 + Sample_Count)) {
+        // Not possible - samples are too close
+        // Sample EITHER in the middle of the ON-period or in the middle of the OFF-period
+        if (timerSettingsNext.DutyCycle >= 0.5 && sampleLocation1 > 0) {
+            sampleLocation2 = 0; // since the ON-period is longest, remove sampling from the OFF-period
+        } else if (timerSettingsNext.DutyCycle < 0.5 && sampleLocation2 > 0) {
+            sampleLocation1 = 0; // since the OFF-period is longest, remove sampling from the ON-period
+        }
+    }
+
     __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_5, sampleLocation1);
     __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_6, sampleLocation2);
 
@@ -299,17 +330,17 @@ void SyncedPWMADC::SetDutyCycle_MiddleSampling(float dutyPct)
     }
 
     if (timerSettingsNext.Direction) {
-        __HAL_TIM_SET_COMPARE(
-          &hTimer, TIM_CHANNEL_1,
-          0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
-        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3,
-                              Duty_Count); // control the duty cycle with the other side of the motor
+        // TIM_RESET_CAPTUREPOLARITY(&hTimer, TIM_CHANNEL_3);
+        // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0);
+        // control the duty cycle with the other side of the motor
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count);
     } else {
-        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1,
-                              Duty_Count); // control the duty cycle with the other side of the motor
-        __HAL_TIM_SET_COMPARE(
-          &hTimer, TIM_CHANNEL_3,
-          0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+        // TIM_RESET_CAPTUREPOLARITY(&hTimer, TIM_CHANNEL_1);
+        // control the duty cycle with the other side of the motor
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count);
+        // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0);
     }
 
     if (_operatingMode == COAST) {
@@ -365,12 +396,19 @@ void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
     const uint16_t& End_Count    = PredefinedCounts.End;
     const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
     const uint16_t& Sample_Count = PredefinedCounts.Sample;
-    // Duty cycle is defined as:
-    // Duty Cycle = (CCR+1) / (ARR+1)
-    // So 100% duty cycle is achieved by setting CCR=ARR
-    const uint16_t Duty_Count = (uint16_t)(
-      roundf(fabsf(timerSettingsNext.DutyCycle) *
-             End_Count)); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+    /* From the "PWM edge-aligned mode" section of the Reference Manual:
+    In the following example, we consider PWM mode 1. The reference PWM signal
+    tim_ocxref is high as long as TIMx_CNT < TIMx_CCRx else it becomes low. If the
+    compare value in TIMx_CCRx is greater than the auto-reload value (in TIMx_ARR)
+    then tim_ocxref is held at ‘1’.
+    */
+    // Duty cycle is thus defined as:
+    // Duty Cycle = CCR / (ARR+1)
+    // So 100% duty cycle is achieved by setting CCR=ARR+1
+    // Note that CCR is the Capture Compare Register value, computed as
+    // CCR = Duty * (ARR+1)
+    const uint16_t Duty_Count = (uint16_t)(roundf(fabsf(timerSettingsNext.DutyCycle) * End_Count));
 
     // Sanity check
     if (End_Count <= Sample_Count) {
@@ -400,17 +438,15 @@ void SyncedPWMADC::SetDutyCycle_EndSampling(float dutyPct)
     }
 
     if (timerSettingsNext.Direction) {
-        __HAL_TIM_SET_COMPARE(
-          &hTimer, TIM_CHANNEL_1,
-          0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
-        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3,
-                              Duty_Count); // control the duty cycle with the other side of the motor
+        // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0);
+        // control the duty cycle with the other side of the motor
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count);
     } else {
-        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1,
-                              Duty_Count); // control the duty cycle with the other side of the motor
-        __HAL_TIM_SET_COMPARE(
-          &hTimer, TIM_CHANNEL_3,
-          0); // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+        // control the duty cycle with the other side of the motor
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count);
+        // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+        __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0);
     }
 
     if (_operatingMode == COAST) {
@@ -466,12 +502,19 @@ void SyncedPWMADC::SetDutyCycle_MiddleSamplingOnce(float dutyPct)
     const uint16_t& End_Count    = PredefinedCounts.End;
     const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
     const uint16_t& Sample_Count = PredefinedCounts.Sample;
-    // Duty cycle is defined as:
-    // Duty Cycle = (CCR+1) / (ARR+1)
-    // So 100% duty cycle is achieved by setting CCR=ARR
-    const uint16_t Duty_Count = (uint16_t)(
-      roundf(fabsf(timerSettingsNext.DutyCycle) *
-             End_Count)); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+    /* From the "PWM edge-aligned mode" section of the Reference Manual:
+    In the following example, we consider PWM mode 1. The reference PWM signal
+    tim_ocxref is high as long as TIMx_CNT < TIMx_CCRx else it becomes low. If the
+    compare value in TIMx_CCRx is greater than the auto-reload value (in TIMx_ARR)
+    then tim_ocxref is held at ‘1’.
+    */
+    // Duty cycle is thus defined as:
+    // Duty Cycle = CCR / (ARR+1)
+    // So 100% duty cycle is achieved by setting CCR=ARR+1
+    // Note that CCR is the Capture Compare Register value, computed as
+    // CCR = Duty * (ARR+1)
+    const uint16_t Duty_Count = (uint16_t)(roundf(fabsf(timerSettingsNext.DutyCycle) * End_Count));
 
     // Sanity check
     if (End_Count <= Sample_Count) {
@@ -565,11 +608,6 @@ void SyncedPWMADC::SetCustomSamplingLocations(float samplingLocation1, float sam
     const uint16_t& End_Count    = PredefinedCounts.End;
     const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
     const uint16_t& Sample_Count = PredefinedCounts.Sample;
-    // Duty cycle is defined as:
-    // Duty Cycle = (CCR+1) / (ARR+1)
-    // So 100% duty cycle is achieved by setting CCR=ARR
-    // const uint16_t Duty_Count = (uint16_t)(roundf( fabsf(timerSettingsNext.DutyCycle)*End_Count )); // note that from
-    // testing I have identified that it is more accurate not to subtract -1 here
 
     // Sanity check
     if (End_Count <= Sample_Count) {
@@ -659,12 +697,19 @@ void SyncedPWMADC::SetDutyCycle_CustomSampling(float dutyPct, float samplingLoca
     const uint16_t& End_Count    = PredefinedCounts.End;
     const uint16_t& Ripple_Count = PredefinedCounts.Ripple;
     const uint16_t& Sample_Count = PredefinedCounts.Sample;
-    // Duty cycle is defined as:
-    // Duty Cycle = (CCR+1) / (ARR+1)
-    // So 100% duty cycle is achieved by setting CCR=ARR
-    const uint16_t Duty_Count = (uint16_t)(
-      roundf(fabsf(timerSettingsNext.DutyCycle) *
-             End_Count)); // note that from testing I have identified that it is more accurate not to subtract -1 here
+
+    /* From the "PWM edge-aligned mode" section of the Reference Manual:
+    In the following example, we consider PWM mode 1. The reference PWM signal
+    tim_ocxref is high as long as TIMx_CNT < TIMx_CCRx else it becomes low. If the
+    compare value in TIMx_CCRx is greater than the auto-reload value (in TIMx_ARR)
+    then tim_ocxref is held at ‘1’.
+    */
+    // Duty cycle is thus defined as:
+    // Duty Cycle = CCR / (ARR+1)
+    // So 100% duty cycle is achieved by setting CCR=ARR+1
+    // Note that CCR is the Capture Compare Register value, computed as
+    // CCR = Duty * (ARR+1)
+    const uint16_t Duty_Count = (uint16_t)(roundf(fabsf(timerSettingsNext.DutyCycle) * End_Count));
 
     // Sanity check
     if (End_Count <= Sample_Count) {
@@ -783,12 +828,25 @@ void SyncedPWMADC::LatchTimerSettings(SyncedPWMADC* obj)
 #endif
             obj->timerSettingsNext.Changed = false;
 
-            // Apply the changed timer settings that has to be latched
-            obj->hTimer.Instance->RCR = obj->timerSettingsNext.samplingInterval - 1;
-
             if (obj->timerSettingsNext.BemfHighRange != obj->timerSettingsCurrent.BemfHighRange) {
                 obj->EnableBemfVoltageDivider(
                   obj->timerSettingsNext.BemfHighRange); // enable voltage divider in high-range mode
+            }
+
+            if (obj->timerSettingsNext.DutyCycleLocation == obj->PredefinedCounts.End) {
+                obj->EnableFullOn(obj->timerSettingsNext.Direction);
+                /*if (timerSettingsNext.Direction) {
+                    TIM_SET_CAPTUREPOLARITY(&hTimer, TIM_CHANNEL_3, TIM_OCPOLARITY_LOW);
+                    TIM_SET_CAPTUREPOLARITY(&hTimer, TIM_CHANNEL_3, TIM_OCNPOLARITY_LOW);
+                    __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0);
+                } else {
+                    TIM_SET_CAPTUREPOLARITY(&hTimer, TIM_CHANNEL_1, TIM_OCPOLARITY_LOW);
+                    TIM_SET_CAPTUREPOLARITY(&hTimer, TIM_CHANNEL_1, TIM_OCNPOLARITY_LOW);
+                    __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0);
+                }*/
+            } else if (obj->timerSettingsNext.DutyCycleLocation != obj->PredefinedCounts.End &&
+                       obj->timerSettingsCurrent.DutyCycleLocation == obj->PredefinedCounts.End) {
+                obj->DisableFullOn();
             }
 
             obj->timerSettingsCurrent = obj->timerSettingsNext;
@@ -871,7 +929,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 #pragma GCC push_options
 #pragma GCC optimize("O3")
-void        SyncedPWMADC::SamplingCompleted(SyncedPWMADC* obj, uint8_t ADC)
+
+void SyncedPWMADC::SamplingCompleted(SyncedPWMADC* obj, uint8_t ADC)
 {
     if (!obj)
         return;
@@ -1278,6 +1337,7 @@ void        SyncedPWMADC::SamplingCompleted(SyncedPWMADC* obj, uint8_t ADC)
 #endif
     }
 }
+
 #pragma GCC pop_options
 
 void SyncedPWMADC::Debug_SetSamplingPin(IO* pin)
@@ -1340,7 +1400,7 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
     ChannelCalibrations.CurrentSense.Enabled = false; // disable calibration-compensation during calibration
 
     SetOperatingMode(BRAKE);
-    SetNumberOfAveragingSamples(1);
+    // SetNumberOfAveragingSamples(1);
 
     // Sample current sense in Forward direction (VSENSE1)
     {
@@ -1358,7 +1418,7 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
             if (xQueueReceive(SampleQueue, &sample, (TickType_t)portMAX_DELAY) == pdPASS) {
                 if (sample.Current.OFF != 0) {
                     CurrentSenseOffset1 += sample.Current.OFF; // Single trigger sampling configured and since duty
-                                                               // cycle is OFF the sample would be put in the OFF field
+                    // cycle is OFF the sample would be put in the OFF field
                     SampleCount++;
                 }
             }
@@ -1384,7 +1444,7 @@ void SyncedPWMADC::DetermineCurrentSenseOffset()
             if (xQueueReceive(SampleQueue, &sample, (TickType_t)portMAX_DELAY) == pdPASS) {
                 if (sample.Current.OFF != 0) {
                     CurrentSenseOffset3 += sample.Current.OFF; // Single trigger sampling configured and since duty
-                                                               // cycle is OFF the sample would be put in the OFF field
+                    // cycle is OFF the sample would be put in the OFF field
                     SampleCount++;
                 }
             }

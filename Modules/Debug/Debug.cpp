@@ -35,8 +35,11 @@ void HAL_Delay(uint32_t Delay); // forward declaration
 #include <LSPC/LSPC.hpp>
 #endif
 
-bool  Debug::handleCreated = false;
-Debug Debug::debugHandle;
+namespace { // Local namespace
+    // Global variables
+    bool handleCreated = false;
+    Debug debugHandle; // statically created Debug object (singleton)
+}
 
 // Necessary to export for compiler such that the Error_Handler function can be called by C code
 extern "C" void Error_Handler(void);
@@ -65,8 +68,6 @@ void Debug::AssignDebugCOM(void* com)
         ERROR("COM object does not exist");
         return;
     }
-    debugHandle.currentBufferLocation_ = 0;
-    memset(debugHandle.messageBuffer_, 0, MAX_DEBUG_TEXT_LENGTH);
 #ifdef USE_FREERTOS
     debugHandle.mutex_ = xSemaphoreCreateBinary();
     if (debugHandle.mutex_ == NULL) {
@@ -77,6 +78,18 @@ void Debug::AssignDebugCOM(void* com)
     xSemaphoreGive(debugHandle.mutex_); // give the semaphore the first time
 
 #ifdef DEBUG_USE_LSPC
+    debugHandle.currentBufferLocation_ = 0;
+    memset(debugHandle.messageBuffer_, 0, MAX_DEBUG_TEXT_LENGTH);
+
+    debugHandle.packagedDataToSend_ = xSemaphoreCreateBinary();
+    if (debugHandle.packagedDataToSend_ == NULL) {
+        ERROR("Could not create Debug send mutex");
+        return;
+    }
+    vQueueAddToRegistry(debugHandle.packagedDataToSend_, "Debug send");
+
+    // Package generator thread is used to combine multiple debug messages into one LSPC package
+    // Packing happens when task gets preempted and with its low priority this only happens when other tasks are idling
     xTaskCreate(Debug::PackageGeneratorThread, (char*)"Debug transmitter", debugHandle.THREAD_STACK_SIZE,
                 (void*)&debugHandle, debugHandle.THREAD_PRIORITY, &debugHandle._TaskHandle);
 #endif
@@ -92,7 +105,7 @@ void Debug::PackageGeneratorThread(void* pvParameters)
     Debug* debug = (Debug*)pvParameters;
 
     while (1) {
-        delay(1);
+        xSemaphoreTake(debug->packagedDataToSend_, (TickType_t)portMAX_DELAY); // take send mutex
         xSemaphoreTake(debug->mutex_, (TickType_t)portMAX_DELAY); // take debug mutex
         if (debug->currentBufferLocation_ > 0) {
             ((LSPC*)debug->com_)
@@ -165,6 +178,8 @@ void Debug::Message(const char* msg)
 
         memcpy(&debugHandle.messageBuffer_[debugHandle.currentBufferLocation_], msg, stringLength);
         debugHandle.currentBufferLocation_ += stringLength;
+
+        xSemaphoreGive(debugHandle.packagedDataToSend_); // indicate that there are data to send
     }
 #ifdef USE_FREERTOS
     xSemaphoreGive(debugHandle.mutex_); // give hardware resource back

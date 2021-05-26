@@ -41,9 +41,9 @@
 class CANBus
 {
 	private:
-		const int CAN_RX_PROCESSING_THREAD_STACK_SIZE = configMINIMAL_STACK_SIZE;
-		const int CAN_RX_QUEUE_LENGTH = 3;
-		const uint16_t TX_TIMEOUT = 500; // milliseconds
+        static constexpr int CAN_RX_PROCESSING_THREAD_STACK_SIZE = configMINIMAL_STACK_SIZE;
+        static constexpr int CAN_RX_QUEUE_LENGTH = 3;
+        static constexpr uint16_t TX_TIMEOUT = 500; // milliseconds
 
 	public:
 		typedef struct package_t {

@@ -20,12 +20,44 @@
 
 #include <Debug/Debug.h>
 
+#include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
+#include "semphr.h"
+#include "FreeRTOS_Definitions.h"
+
+#include <stddef.h>
+
+#ifndef FREERTOS_USE_NEWLIB
+#error "CPULoad needs to use FreeRTOS::Heap::Newlib, otherwise the printf support does not work."
+#endif
+
+#if( configUSE_TRACE_FACILITY != 1 )
+#error "configUSE_TRACE_FACILITY must also be set to 1 in FreeRTOSConfig.h to use vTaskGetRunTimeStats().""
+#endif
+
+#include <mallocTracker.h>
+#include <mallocTracker.hpp>
+#include <numeric>
 
 CPULoad::CPULoad(LSPC& lspc, uint32_t cpuLoadTaskPriority)
     : lspc_(lspc)
     , cpuLoadTaskHandle_(0)
+    , sleepMs_{1000}
+    , printingEnabled_{true}
+    , printingBuffer_{(char *)pvPortMalloc(200)}
 {
+    printingSemaphore_ = xSemaphoreCreateBinary();
+    if (printingSemaphore_ == NULL) {
+        ERROR("Could not create CPULoad print semaphore");
+        return;
+    }
+    vQueueAddToRegistry(printingSemaphore_, "CPU Load Print");
+
+    if (!printingBuffer_) {
+        ERROR("Could not allocate printing buffer for CPU Load");
+    }
+
     xTaskCreate(CPULoad::CPULoadThread, (char*)"CPU Load", CPULOAD_THREAD_STACK, (void*)this, cpuLoadTaskPriority,
                 &cpuLoadTaskHandle_);
 }
@@ -36,66 +68,50 @@ CPULoad::~CPULoad()
         vTaskDelete(cpuLoadTaskHandle_); // stop task
 }
 
+void CPULoad::SetRefreshRate(uint32_t sleepMs)
+{
+    sleepMs_ = sleepMs;
+}
+
+void CPULoad::EnablePrinting(bool enable)
+{
+    printingEnabled_ = enable;
+}
+
 void CPULoad::CPULoadThread(void * pvParameters)
 {
     CPULoad* obj  = (CPULoad*)pvParameters;
     LSPC&    lspc = obj->lspc_;
 
-#if( configUSE_TRACE_FACILITY != 1 )
-#error configUSE_TRACE_FACILITY must also be set to 1 in FreeRTOSConfig.h to use vTaskGetRunTimeStats().
-#endif
-
     /* Send CPU load every second */
-    char * pcWriteBuffer = (char *)pvPortMalloc(400); // Approx 40 bytes pr. task
     while (1)
     {
-        obj->TaskRunTimeStats(pcWriteBuffer);
-        obj->MemoryStats(pcWriteBuffer);
-        osDelay(1000);
-    }
-}
+        const auto printNow = xSemaphoreTake(obj->printingSemaphore_, obj->sleepMs_*configTICK_RATE_HZ/1000);
 
-#if 0
-void CPULoad::CPULoadThread2(void * pvParameters)
-{
-    CPULoad* obj  = (CPULoad*)pvParameters;
-    LSPC&    lspc = obj->_lspc;
-
-#if( configUSE_TRACE_FACILITY != 1 )
-#error configUSE_TRACE_FACILITY must also be set to 1 in FreeRTOSConfig.h to use vTaskGetRunTimeStats().
-#endif
-
-    /* Send CPU load every second */
-    char * pcWriteBuffer = (char *)pvPortMalloc(800); // Approx 40 bytes pr. task
-    while (1)
-    {
-        TaskRunTimeStats(pcWriteBuffer);
-        char * endPtr = &pcWriteBuffer[strlen(pcWriteBuffer)];
-        *endPtr++ = '\n'; *endPtr++ = '\n'; *endPtr++ = 0;
-
-        // Split into multiple packages and send
-        uint16_t txIdx = 0;
-        uint16_t remainingLength = strlen(pcWriteBuffer);
-        uint16_t txLength;
-
-        while (remainingLength > 0) {
-            txLength = remainingLength;
-            if (txLength > LSPC_MAXIMUM_PACKAGE_LENGTH) {
-                txLength = LSPC_MAXIMUM_PACKAGE_LENGTH-1;
-                while (pcWriteBuffer[txIdx+txLength] != '\n' && txLength > 0) txLength--; // find and include line-break (if possible)
-                if (txLength == 0) txLength = LSPC_MAXIMUM_PACKAGE_LENGTH;
-                else txLength++;
-            }
-            lspc.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)&pcWriteBuffer[txIdx], txLength);
-
-            txIdx += txLength;
-            remainingLength -= txLength;
+        if (!obj->printingBuffer_) {
+            obj->printingBuffer_ = (char *)pvPortMalloc(200);
         }
 
-        osDelay(1000);
+        if (printNow == pdTRUE || obj->printingEnabled_) {
+            obj->PrintTaskStats();
+            obj->PrintQueueStats();
+            obj->PrintMemoryStats();
+        } else {
+            obj->ComputeTaskStats();
+        }
+
+        if (obj->printingEnabled_ == false && obj->printingBuffer_)
+        {
+            vPortFree(obj->printingBuffer_);
+            obj->printingBuffer_ = 0;
+        }
     }
 }
-#endif
+
+void CPULoad::Print()
+{
+    xSemaphoreGive(printingSemaphore_); // print now
+}
 
 char * CPULoad::WriteTaskNameToBuffer(char * pcBuffer, const char * pcTaskName)
 {
@@ -118,85 +134,7 @@ char * CPULoad::WriteTaskNameToBuffer(char * pcBuffer, const char * pcTaskName)
     return &( pcBuffer[ x ] );
 }
 
-// Copied from FreeRTOS/tasks.c since tskTCB is kept opaque
-// Make sure to keep this updated
-typedef struct tskTaskControlBlock 			/* The old naming convention is used to prevent breaking kernel aware debuggers. */
-{
-    volatile StackType_t	*pxTopOfStack;	/*< Points to the location of the last item placed on the tasks stack.  THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT. */
-
-#if ( portUSING_MPU_WRAPPERS == 1 )
-    xMPU_SETTINGS	xMPUSettings;		/*< The MPU settings are defined as part of the port layer.  THIS MUST BE THE SECOND MEMBER OF THE TCB STRUCT. */
-#endif
-
-    ListItem_t			xStateListItem;	/*< The list that the state list item of a task is reference from denotes the state of that task (Ready, Blocked, Suspended ). */
-    ListItem_t			xEventListItem;		/*< Used to reference a task from an event list. */
-    UBaseType_t			uxPriority;			/*< The priority of the task.  0 is the lowest priority. */
-    StackType_t			*pxStack;			/*< Points to the start of the stack. */
-    char				pcTaskName[ configMAX_TASK_NAME_LEN ];/*< Descriptive name given to the task when created.  Facilitates debugging only. */ /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
-
-#if ( ( portSTACK_GROWTH > 0 ) || ( configRECORD_STACK_HIGH_ADDRESS == 1 ) )
-    StackType_t		*pxEndOfStack;		/*< Points to the highest valid address for the stack. */
-#endif
-
-#if ( portCRITICAL_NESTING_IN_TCB == 1 )
-    UBaseType_t		uxCriticalNesting;	/*< Holds the critical section nesting depth for ports that do not maintain their own count in the port layer. */
-#endif
-
-#if ( configUSE_TRACE_FACILITY == 1 )
-    UBaseType_t		uxTCBNumber;		/*< Stores a number that increments each time a TCB is created.  It allows debuggers to determine when a task has been deleted and then recreated. */
-    UBaseType_t		uxTaskNumber;		/*< Stores a number specifically for use by third party trace code. */
-#endif
-
-#if ( configUSE_MUTEXES == 1 )
-    UBaseType_t		uxBasePriority;		/*< The priority last assigned to the task - used by the priority inheritance mechanism. */
-    UBaseType_t		uxMutexesHeld;
-#endif
-
-#if ( configUSE_APPLICATION_TASK_TAG == 1 )
-    TaskHookFunction_t pxTaskTag;
-#endif
-
-#if( configNUM_THREAD_LOCAL_STORAGE_POINTERS > 0 )
-    void			*pvThreadLocalStoragePointers[ configNUM_THREAD_LOCAL_STORAGE_POINTERS ];
-#endif
-
-#if( configGENERATE_RUN_TIME_STATS == 1 )
-    uint32_t		ulRunTimeCounter;	/*< Stores the amount of time the task has spent in the Running state. */
-#endif
-
-#if ( configUSE_NEWLIB_REENTRANT == 1 )
-    /* Allocate a Newlib reent structure that is specific to this task.
-    Note Newlib support has been included by popular demand, but is not
-    used by the FreeRTOS maintainers themselves.  FreeRTOS is not
-    responsible for resulting newlib operation.  User must be familiar with
-    newlib and must provide system-wide implementations of the necessary
-    stubs. Be warned that (at the time of writing) the current newlib design
-    implements a system-wide malloc() that must be provided with locks. */
-    struct	_reent xNewLib_reent;
-#endif
-
-#if( configUSE_TASK_NOTIFICATIONS == 1 )
-    volatile uint32_t ulNotifiedValue;
-    volatile uint8_t ucNotifyState;
-#endif
-
-    /* See the comments in FreeRTOS.h with the definition of
-    tskSTATIC_AND_DYNAMIC_ALLOCATION_POSSIBLE. */
-#if( tskSTATIC_AND_DYNAMIC_ALLOCATION_POSSIBLE != 0 ) /*lint !e731 !e9029 Macro has been consolidated for readability reasons. */
-    uint8_t	ucStaticallyAllocated; 		/*< Set to pdTRUE if the task is a statically allocated to ensure no attempt is made to free the memory. */
-#endif
-
-#if( INCLUDE_xTaskAbortDelay == 1 )
-    uint8_t ucDelayAborted;
-#endif
-
-#if( configUSE_POSIX_ERRNO == 1 )
-    int iTaskErrno;
-#endif
-
-} tskTCB;
-
-void CPULoad::TaskRunTimeStats(char * pcWriteBuffer)
+void CPULoad::PrintTaskStats()
 {
     // Based on vTaskGetRunTimeStats
     //static TaskStatus_t *pxTaskStatusArrayPrev = 0;
@@ -208,16 +146,16 @@ void CPULoad::TaskRunTimeStats(char * pcWriteBuffer)
     TaskStatus_t *pxTaskStatusArray;
     UBaseType_t uxArraySize;
 
-    char * bufferStart = pcWriteBuffer;
-
-    *pcWriteBuffer = 0x00; // ensure that we start clean
+    char * printingBuffer = printingBuffer_;
+    *printingBuffer = 0x00; // ensure that we start clean
 
     uxArraySize = uxTaskGetNumberOfTasks();
     pxTaskStatusArray = (TaskStatus_t*)pvPortMalloc( uxArraySize * sizeof( TaskStatus_t ) );
 
     unsigned long numTasksPrinted = 0;
+    unsigned long tasksTotalMemoryUsageBytes = 0;
 
-    if( pxTaskStatusArray != NULL )
+    if (pxTaskStatusArray != NULL)
     {
         uxArraySize = uxTaskGetSystemState( pxTaskStatusArray, uxArraySize, &ulTotalTime );
 
@@ -225,20 +163,20 @@ void CPULoad::TaskRunTimeStats(char * pcWriteBuffer)
 
         if( ulTotalTimeD100 > 0 )
         {
-            strcpy( pcWriteBuffer, "Prio\tTask name" );
-            pcWriteBuffer += strlen( pcWriteBuffer );
-            for( UBaseType_t x = 0; x < ( size_t ) ( configMAX_TASK_NAME_LEN - 10 ); x++ )
-            {
-                *pcWriteBuffer++ = ' ';
+            strcpy(printingBuffer, "Prio\tTask name");
+            printingBuffer += strlen(printingBuffer);
+            for (UBaseType_t x = 0; x < (size_t) (configMAX_TASK_NAME_LEN - 10); x++) {
+                *printingBuffer++ = ' ';
             }
 #ifdef CPULOAD_USE_VERBOSE
-            strcpy( pcWriteBuffer, "\tTotal     \tUtil\tOverall\tState    \tStack alloc\tStack left\r\n" );
+            strcpy(printingBuffer, "\tTotal     \tUtil\tOverall\tState    \tMem usage\tStack alloc\tStack left\r\n");
 #else
-            strcpy( pcWriteBuffer, "\tUtil\tOverall\tState    \tStack alloc\tStack left\r\n" );
+            strcpy( printingBuffer, "\tUtil\tOverall\tState    \tMem usage\tStack alloc\tStack left\r\n" );
 #endif
-            pcWriteBuffer += strlen( pcWriteBuffer );
-            lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)bufferStart, pcWriteBuffer - bufferStart);
-            pcWriteBuffer = bufferStart;
+            printingBuffer += strlen(printingBuffer);
+            lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *) printingBuffer_,
+                                printingBuffer - printingBuffer_);
+            printingBuffer = printingBuffer_;
 
             const auto deltaRuntime = (ulTotalTime - prevTotalRunTime) / 100UL;
 
@@ -267,78 +205,84 @@ void CPULoad::TaskRunTimeStats(char * pcWriteBuffer)
                 if (ulOverallStatsAsPercentage > 100)
                     ulOverallStatsAsPercentage = 0;
 
-                sprintf( pcWriteBuffer, "%u\t", ( unsigned int ) pxTaskStatusArray[taskIdx].uxCurrentPriority );
-                pcWriteBuffer += strlen( pcWriteBuffer );
+                sprintf( printingBuffer, "%u\t", ( unsigned int ) pxTaskStatusArray[taskIdx].uxCurrentPriority );
+                printingBuffer += strlen( printingBuffer );
 
-                pcWriteBuffer = WriteTaskNameToBuffer( pcWriteBuffer, pxTaskStatusArray[taskIdx].pcTaskName );
+                printingBuffer = WriteTaskNameToBuffer( printingBuffer, pxTaskStatusArray[taskIdx].pcTaskName );
 
 #ifdef CPULOAD_USE_VERBOSE
-                sprintf(pcWriteBuffer, "\t%-10lu", pxTaskStatusArray[taskIdx].ulRunTimeCounter);
-                pcWriteBuffer += strlen( pcWriteBuffer );
+                sprintf(printingBuffer, "\t%-10lu", pxTaskStatusArray[taskIdx].ulRunTimeCounter);
+                printingBuffer += strlen( printingBuffer );
 #endif
 
                 if( ulStatsAsPercentage > 0UL )
                 {
-                    //sprintf( pcWriteBuffer, "\t%u\t\t%u%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter, ( unsigned int ) ulStatsAsPercentage );
-                    sprintf( pcWriteBuffer, "\t%u%%", ( unsigned int ) ulStatsAsPercentage );
+                    //sprintf( printingBuffer, "\t%u\t\t%u%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter, ( unsigned int ) ulStatsAsPercentage );
+                    sprintf( printingBuffer, "\t%u%%", ( unsigned int ) ulStatsAsPercentage );
                 }
                 else
                 {
-                    //sprintf( pcWriteBuffer, "\t%u\t\t<1%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter );
-                    strcpy( pcWriteBuffer, "\t<1%" );
+                    //sprintf( printingBuffer, "\t%u\t\t<1%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter );
+                    strcpy( printingBuffer, "\t<1%" );
                 }
-                pcWriteBuffer += strlen( pcWriteBuffer );
+                printingBuffer += strlen( printingBuffer );
 
                 if( ulOverallStatsAsPercentage > 0UL )
                 {
-                    //sprintf( pcWriteBuffer, "\t%u\t\t%u%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter, ( unsigned int ) ulOverallStatsAsPercentage );
-                    sprintf( pcWriteBuffer, "\t%u%%\t", ( unsigned int ) ulOverallStatsAsPercentage );
+                    //sprintf( printingBuffer, "\t%u\t\t%u%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter, ( unsigned int ) ulOverallStatsAsPercentage );
+                    sprintf( printingBuffer, "\t%u%%\t", ( unsigned int ) ulOverallStatsAsPercentage );
                 }
                 else
                 {
-                    //sprintf( pcWriteBuffer, "\t%u\t\t<1%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter );
-                    strcpy( pcWriteBuffer, "\t<1%\t" );
+                    //sprintf( printingBuffer, "\t%u\t\t<1%%\t", ( unsigned int ) pxTaskStatusArray[taskIdx].ulRunTimeCounter );
+                    strcpy( printingBuffer, "\t<1%\t" );
                 }
-                pcWriteBuffer += strlen( pcWriteBuffer );
+                printingBuffer += strlen( printingBuffer );
 
                 switch (pxTaskStatusArray[taskIdx].eCurrentState) {
                     case eRunning:
-                        strcpy(pcWriteBuffer, "[RUNNING]");
+                        strcpy(printingBuffer, "[RUNNING]");
                         break;
                     case eReady:
-                        strcpy(pcWriteBuffer, "[READY]  ");
+                        strcpy(printingBuffer, "[READY]  ");
                         break;
                     case eBlocked:
-                        strcpy(pcWriteBuffer, "[BLOCKED]");
+                        strcpy(printingBuffer, "[BLOCKED]");
                         break;
                     case eSuspended:
-                        strcpy(pcWriteBuffer, "[SUSPENDED]");
+                        strcpy(printingBuffer, "[SUSPENDED]");
                         break;
                     case eDeleted:
-                        strcpy(pcWriteBuffer, "[DELETED]");
+                        strcpy(printingBuffer, "[DELETED]");
                         break;
                     case eInvalid:
-                        strcpy(pcWriteBuffer, "[INVALID]");
+                        strcpy(printingBuffer, "[INVALID]");
                         break;
                     default:
-                        strcpy(pcWriteBuffer, "[UNKNOWN]");
+                        strcpy(printingBuffer, "[UNKNOWN]");
                         break;
                 }
-                pcWriteBuffer += strlen( pcWriteBuffer );
+                printingBuffer += strlen( printingBuffer );
 
                 // Words = 4 bytes
-                sprintf( pcWriteBuffer, "\t%u words", (unsigned int)(pxTaskStatusArray[taskIdx].xHandle->pxEndOfStack - pxTaskStatusArray[taskIdx].xHandle->pxStack + 2));
-                pcWriteBuffer += strlen( pcWriteBuffer );
+                const unsigned int taskStackSizeWords = (unsigned int)(pxTaskStatusArray[taskIdx].xHandle->pxEndOfStack - pxTaskStatusArray[taskIdx].xHandle->pxStack + 2);
+                tasksTotalMemoryUsageBytes += 4*taskStackSizeWords + sizeof(tskTCB);
+                sprintf( printingBuffer, "\t%u bytes", 4*taskStackSizeWords + sizeof(tskTCB));
+                printingBuffer += strlen( printingBuffer );
 
-                sprintf( pcWriteBuffer, "\t%u words\t", pxTaskStatusArray[taskIdx].usStackHighWaterMark);
-                pcWriteBuffer += strlen( pcWriteBuffer );
+                // Words = 4 bytes
+                sprintf( printingBuffer, "\t%u words", taskStackSizeWords);
+                printingBuffer += strlen( printingBuffer );
 
-                *pcWriteBuffer++ = '\r';
-                *pcWriteBuffer++ = '\n';
-                *pcWriteBuffer = 0;
+                sprintf( printingBuffer, "\t%u words\t", pxTaskStatusArray[taskIdx].usStackHighWaterMark);
+                printingBuffer += strlen( printingBuffer );
 
-                lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)bufferStart, pcWriteBuffer - bufferStart);
-                pcWriteBuffer = bufferStart;
+                *printingBuffer++ = '\r';
+                *printingBuffer++ = '\n';
+                *printingBuffer = 0;
+
+                lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)printingBuffer_, printingBuffer - printingBuffer_);
+                printingBuffer = printingBuffer_;
 
                 // Mark task as printed
                 pxTaskStatusArray[taskIdx].pxStackBase = 0;
@@ -347,64 +291,312 @@ void CPULoad::TaskRunTimeStats(char * pcWriteBuffer)
             }
         }
 
+        strcpy(printingBuffer, "Total memory usage:");
+        printingBuffer += strlen(printingBuffer);
+        for (UBaseType_t x = 0; x < (size_t)configMAX_TASK_NAME_LEN - 10; x++) {
+            *printingBuffer++ = ' ';
+        }
+        sprintf(printingBuffer, "\t\t\t\t\t%lu bytes", tasksTotalMemoryUsageBytes);
+        printingBuffer += strlen(printingBuffer);
+        lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *) printingBuffer_, printingBuffer - printingBuffer_);
+        printingBuffer = printingBuffer_;
+
 #ifdef CPULOAD_USE_VERBOSE
-        sprintf(pcWriteBuffer, "\r\nTotal Ticks @ %.2f Hz: %lu", TICK_FREQUENCY, ulTotalTime);
-        pcWriteBuffer += strlen( pcWriteBuffer );
-        lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)bufferStart, pcWriteBuffer - bufferStart);
-        pcWriteBuffer = bufferStart;
+        sprintf(printingBuffer, "\r\nTotal Ticks @ %.2f Hz: %lu", TICK_FREQUENCY, ulTotalTime);
+        printingBuffer += strlen(printingBuffer);
+        lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *) printingBuffer_, printingBuffer - printingBuffer_);
+        printingBuffer = printingBuffer_;
 #endif
 
         const auto totalRunTime = portCONVERT_RUN_TIME_COUNTER_VALUE(ulTotalTime);
 
-        sprintf(pcWriteBuffer, "\r\nTotal Time: %.5f s\r\n\r\n", totalRunTime);
-        pcWriteBuffer += strlen( pcWriteBuffer );
-        lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)bufferStart, pcWriteBuffer - bufferStart);
-        pcWriteBuffer = bufferStart;
+        sprintf(printingBuffer, "\r\nTotal Time: %.5f s\r\n\r\n", totalRunTime);
+        printingBuffer += strlen(printingBuffer);
+        lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *) printingBuffer_, printingBuffer - printingBuffer_);
+        printingBuffer = printingBuffer_;
 
-//        // Add extra spacing at the end of the CPU Load package
-//        *pcWriteBuffer++ = '\r';
-//        *pcWriteBuffer++ = '\n';
-//        *pcWriteBuffer = 0;
-//        lspc.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)bufferStart, pcWriteBuffer - bufferStart);
-//        pcWriteBuffer = bufferStart;
+        prevTotalRunTime = ulTotalTime;
+    }
 
-        if (pxTaskStatusArray)
-            vPortFree( pxTaskStatusArray );
-        //pxTaskStatusArrayPrev = pxTaskStatusArray;
-        //uxArraySizePrev = uxArraySize;
-        //ulTotalTimeD100Prev = ulTotalTimeD100;
+    if (pxTaskStatusArray) {
+        vPortFree(pxTaskStatusArray);
+    }
+}
+
+
+void CPULoad::ComputeTaskStats()
+{
+    // Based on vTaskGetRunTimeStats
+    uint32_t ulTotalTime;
+    TaskStatus_t *pxTaskStatusArray;
+    UBaseType_t uxArraySize;
+
+    uxArraySize = uxTaskGetNumberOfTasks();
+    pxTaskStatusArray = (TaskStatus_t*)pvPortMalloc( uxArraySize * sizeof( TaskStatus_t ) );
+
+    unsigned long numTasksPrinted = 0;
+
+    if( pxTaskStatusArray != NULL )
+    {
+        uxArraySize = uxTaskGetSystemState( pxTaskStatusArray, uxArraySize, &ulTotalTime );
+
+        if( ulTotalTime > 0 )
+        {
+            const auto deltaRuntime = (ulTotalTime - prevTotalRunTime) / 100UL;
+
+            while (numTasksPrinted < uxArraySize)
+            {
+                UBaseType_t taskIdx = 0;
+                UBaseType_t priority = configLIBRARY_LOWEST_INTERRUPT_PRIORITY + 1;
+                for( UBaseType_t x = 0; x < uxArraySize; x++ ) {
+                    if (pxTaskStatusArray[x].pxStackBase != 0 && pxTaskStatusArray[x].uxCurrentPriority <= priority) {
+                        taskIdx = x;
+                        priority = pxTaskStatusArray[x].uxCurrentPriority;
+                    }
+                }
+
+                if (prevTaskRunTime.find(pxTaskStatusArray[taskIdx].xHandle) == prevTaskRunTime.end()) {
+                    prevTaskRunTime[pxTaskStatusArray[taskIdx].xHandle] = pxTaskStatusArray[taskIdx].ulRunTimeCounter;
+                }
+
+                // Mark task as printed
+                pxTaskStatusArray[taskIdx].pxStackBase = 0;
+                prevTaskRunTime[pxTaskStatusArray[taskIdx].xHandle] = pxTaskStatusArray[taskIdx].ulRunTimeCounter;
+                numTasksPrinted++;
+            }
+        }
+
+        vPortFree(pxTaskStatusArray);
         prevTotalRunTime = ulTotalTime;
     }
 }
 
+
 // Forward declaration
+#ifdef FREERTOS_USE_NEWLIB
 extern "C" {
-size_t xPortGetTotalHeapSize(void);
+    size_t xPortGetTotalHeapSize(void);
 }
+#endif
 
-void CPULoad::MemoryStats(char * pcWriteBuffer)
+void CPULoad::PrintMemoryStats()
 {
-    char * bufferStart = pcWriteBuffer;
-    *pcWriteBuffer = 0x00; // ensure that we start clean
+    char * printingBuffer = printingBuffer_;
+    *printingBuffer = 0x00; // ensure that we start clean
 
-    strcpy( pcWriteBuffer, "Memory\tTotal\tFree\tUtil\r\n" );
-    pcWriteBuffer += strlen( pcWriteBuffer );
-    lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)bufferStart, pcWriteBuffer - bufferStart);
-    pcWriteBuffer = bufferStart;
+    strcpy( printingBuffer, "Memory\tTotal\tUsed\tFree\tUtil\r\n" );
+    printingBuffer += strlen( printingBuffer );
+    lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)printingBuffer_, printingBuffer - printingBuffer_);
+    printingBuffer = printingBuffer_;
 
-    const auto availableHeap = xPortGetFreeHeapSize();
-    const auto totalHeap = xPortGetTotalHeapSize();
-    const uint32_t heapUtil = ((totalHeap - availableHeap) * 100) / totalHeap;
+    const uint32_t availableHeap = xPortGetFreeHeapSize();
+#ifdef FREERTOS_USE_NEWLIB
+    const uint32_t totalHeap = xPortGetTotalHeapSize();
+#else
+    const uint32_t totalHeap = configTOTAL_HEAP_SIZE;
+#endif
+    const uint32_t heapUsage = (totalHeap - availableHeap);
+    const uint32_t heapUtil = (heapUsage * 100) / totalHeap;
 
-    sprintf( pcWriteBuffer, "Bytes\t%zu\t%zu\t%lu%%", totalHeap, availableHeap, heapUtil);
-    pcWriteBuffer += strlen( pcWriteBuffer );
+    sprintf( printingBuffer, "Bytes\t%lu\t%lu\t%lu\t%lu%%\r\n", totalHeap, heapUsage, availableHeap, heapUtil);
+    printingBuffer += strlen( printingBuffer );
+
+    // Get memory allocation map
+    const std::array<allocatedMemory_t, NUM_SLOTS>& allocatedMemory = getAllocatedMemorySlots();
+    const auto addMemory = [](size_t a, allocatedMemory_t b) {
+        return a + b.size;
+    };
+    const volatile auto totalMemoryUsage = std::accumulate(allocatedMemory.begin(), allocatedMemory.end(),
+                    size_t{0},
+                    addMemory);
+
+#ifdef CPULOAD_USE_VERBOSE
+    strcpy( printingBuffer, "Size\tDescription\r\n" );
+    printingBuffer += strlen( printingBuffer );
+    lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)printingBuffer_, printingBuffer - printingBuffer_);
+    printingBuffer = printingBuffer_;
+
+    for (size_t i = 0; i < allocatedMemory.size(); ++i) {
+        if (allocatedMemory[i].ptr) {
+            if (allocatedMemory[i].assignCaller) {
+                sprintf(printingBuffer, "%lu\t%s:%lu\r\n", allocatedMemory[i].size, allocatedMemory[i].assignCaller, allocatedMemory[i].line);
+            } else {
+                sprintf(printingBuffer, "%lu\r\n", allocatedMemory[i].size);
+            }
+            printingBuffer += strlen(printingBuffer);
+            while (!lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *) printingBuffer_,
+                                printingBuffer - printingBuffer_)) {
+                osDelay(100); // send some of the messages
+            }
+            printingBuffer = printingBuffer_;
+        }
+    }
+#endif
 
     // Add extra spacing at the end of the CPU Load package
-    *pcWriteBuffer++ = '\r';
-    *pcWriteBuffer++ = '\n';
-    *pcWriteBuffer++ = '\r';
-    *pcWriteBuffer++ = '\n';
-    *pcWriteBuffer = 0;
-    lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)bufferStart, pcWriteBuffer - bufferStart);
-    pcWriteBuffer = bufferStart;
+    *printingBuffer++ = '\r';
+    *printingBuffer++ = '\n';
+    *printingBuffer++ = '\r';
+    *printingBuffer++ = '\n';
+    *printingBuffer = 0;
+    lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)printingBuffer_, printingBuffer - printingBuffer_);
+}
+
+void CPULoad::PrintQueueStats()
+{
+    // Iterate through: xQueueRegistry
+    // Make a printout similar to: https://mcuoneclipse.files.wordpress.com/2017/03/queues-with-names.png
+    // which comes from: https://mcuoneclipse.com/2017/03/18/better-freertos-debugging-in-eclipse/
+    char * printingBuffer = printingBuffer_;
+    *printingBuffer = 0x00; // ensure that we start clean
+
+    unsigned long queuesTotalMemoryUsageBytes = 0;
+
+    // Determine maximum queue name length
+    unsigned int maximumQueueNameLength = 0;
+    for (unsigned int i = 0; i < configQUEUE_REGISTRY_SIZE; ++i) {
+        if (xQueueRegistry[i].xHandle != NULL) {
+            maximumQueueNameLength = std::max(maximumQueueNameLength, strlen(xQueueRegistry[i].pcQueueName));
+        }
+    }
+    maximumQueueNameLength++; // add 1 space as spacing
+
+    strcpy( printingBuffer, "Index\tQueue name" );
+    printingBuffer += strlen( printingBuffer );
+    for( UBaseType_t x = 0; x < ( size_t ) ( maximumQueueNameLength - 10 ); x++ )
+    {
+        *printingBuffer++ = ' ';
+    }
+#ifdef CPULOAD_USE_VERBOSE
+    strcpy( printingBuffer, "Address   " );
+    printingBuffer += strlen( printingBuffer );
+#endif
+    strcpy( printingBuffer, "Length\tSize\tTotal\t# TX Wait" );
+    printingBuffer += strlen( printingBuffer );
+    for( UBaseType_t x = 0; x < ( size_t ) ( maximumQueueNameLength + 4 - 9 ); x++ )
+    {
+        *printingBuffer++ = ' ';
+    }
+    strcpy( printingBuffer, "# RX Wait" );
+    printingBuffer += strlen( printingBuffer );
+    for( UBaseType_t x = 0; x < ( size_t ) ( maximumQueueNameLength + 4 - 9 ); x++ )
+    {
+        *printingBuffer++ = ' ';
+    }
+    strcpy( printingBuffer, "Queue Type\r\n" );
+    printingBuffer += strlen( printingBuffer );
+    lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)printingBuffer_, printingBuffer - printingBuffer_);
+    printingBuffer = printingBuffer_;
+
+    for (unsigned int i = 0; i < configQUEUE_REGISTRY_SIZE; ++i) {
+        if (xQueueRegistry[i].xHandle != NULL) {
+            sprintf( printingBuffer, "%u\t", i);
+            printingBuffer += strlen( printingBuffer );
+
+            strcpy( printingBuffer, xQueueRegistry[i].pcQueueName );
+            printingBuffer += strlen( printingBuffer );
+            for( char * x = printingBuffer; x < printingBuffer_ + maximumQueueNameLength; ++x )
+            {
+                *printingBuffer++ = ' ';
+            }
+
+#ifdef CPULOAD_USE_VERBOSE
+            sprintf( printingBuffer, "\t0x%08x", (uint32_t)xQueueRegistry[i].xHandle);
+            printingBuffer += strlen( printingBuffer );
+#endif
+
+            sprintf( printingBuffer, "\t%lu/%lu", xQueueRegistry[i].xHandle->uxMessagesWaiting, xQueueRegistry[i].xHandle->uxLength);
+            printingBuffer += strlen( printingBuffer );
+
+            sprintf( printingBuffer, "\t%lu", xQueueRegistry[i].xHandle->uxItemSize);
+            printingBuffer += strlen( printingBuffer );
+
+            queuesTotalMemoryUsageBytes +=  xQueueRegistry[i].xHandle->uxLength*xQueueRegistry[i].xHandle->uxItemSize + sizeof(xQUEUE);
+            sprintf( printingBuffer, "\t%lu\t", xQueueRegistry[i].xHandle->uxLength*xQueueRegistry[i].xHandle->uxItemSize + sizeof(xQUEUE));
+            printingBuffer += strlen( printingBuffer );
+
+            // Print tasks waiting for queue/semaphore (if any)
+            sprintf( printingBuffer, "%lu", xQueueRegistry[i].xHandle->xTasksWaitingToSend.uxNumberOfItems);
+            if (xQueueRegistry[i].xHandle->xTasksWaitingToSend.uxNumberOfItems > 0) {
+                if (xQueueRegistry[i].xHandle->xTasksWaitingToSend.xListEnd.pxNext->pvOwner != nullptr) {
+                    tskTaskControlBlock* task = (tskTaskControlBlock*)xQueueRegistry[i].xHandle->xTasksWaitingToSend.xListEnd.pxNext->pvOwner;
+                    strcpy(printingBuffer + strlen(printingBuffer), " [");
+                    strcpy(printingBuffer + strlen(printingBuffer), task->pcTaskName);
+                    strcpy(printingBuffer + strlen(printingBuffer), "]");
+                }
+            }
+            size_t totalLen = strlen(printingBuffer);
+            printingBuffer += strlen( printingBuffer );
+            for( UBaseType_t x = 0; x < ( size_t ) ( maximumQueueNameLength + 4 - totalLen ); x++ )
+            {
+                *printingBuffer++ = ' ';
+            }
+
+            sprintf( printingBuffer, "%lu", xQueueRegistry[i].xHandle->xTasksWaitingToReceive.uxNumberOfItems);
+            if (xQueueRegistry[i].xHandle->xTasksWaitingToReceive.uxNumberOfItems > 0) {
+                if (xQueueRegistry[i].xHandle->xTasksWaitingToReceive.xListEnd.pxNext->pvOwner != nullptr) {
+                    tskTaskControlBlock* task = (tskTaskControlBlock*)xQueueRegistry[i].xHandle->xTasksWaitingToReceive.xListEnd.pxNext->pvOwner;
+                    strcpy(printingBuffer + strlen(printingBuffer), " [");
+                    strcpy(printingBuffer + strlen(printingBuffer), task->pcTaskName);
+                    strcpy(printingBuffer + strlen(printingBuffer), "]");
+                }
+            }
+            totalLen = strlen(printingBuffer);
+            printingBuffer += strlen( printingBuffer );
+            for( UBaseType_t x = 0; x < ( size_t ) ( maximumQueueNameLength + 4 - totalLen ); x++ )
+            {
+                *printingBuffer++ = ' ';
+            }
+
+            // Print Queue type
+            switch (xQueueRegistry[i].xHandle->ucQueueType) {
+                default:
+                    if (xQueueRegistry[i].xHandle->uxItemSize == 0) {
+                        if (xQueueRegistry[i].xHandle->pcHead == NULL) {
+                            strcpy(printingBuffer, "Mutex");
+                        } else {
+                            strcpy(printingBuffer, "Binary Semaphore");
+                        }
+                    } else {
+                        strcpy(printingBuffer, "Queue");
+                    }
+                    break;
+                case 1:
+                    strcpy(printingBuffer, "Mutex");
+                    break;
+                case 2:
+                    strcpy(printingBuffer, "Counting Semaphore");
+                    break;
+                case 3:
+                    strcpy(printingBuffer, "Binary Semaphore");
+                    break;
+                case 4:
+                    strcpy(printingBuffer, "Recursive Mutex");
+                    break;
+            }
+            printingBuffer += strlen( printingBuffer );
+
+            *printingBuffer++ = '\r';
+            *printingBuffer++ = '\n';
+            *printingBuffer = 0;
+            lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)printingBuffer_, printingBuffer - printingBuffer_);
+            printingBuffer = printingBuffer_;
+        }
+    }
+
+    strcpy(printingBuffer, "Total memory usage:");
+    printingBuffer += strlen(printingBuffer);
+    for (UBaseType_t x = 0; x < (size_t)configMAX_TASK_NAME_LEN - 10; x++) {
+        *printingBuffer++ = ' ';
+    }
+    sprintf(printingBuffer, "\t\t\t\t%lu bytes", queuesTotalMemoryUsageBytes);
+    printingBuffer += strlen(printingBuffer);
+    *printingBuffer++ = '\r';
+    *printingBuffer++ = '\n';
+
+    // Add extra spacing at the end of the Queue list
+    *printingBuffer++ = '\r';
+    *printingBuffer++ = '\n';
+    *printingBuffer = 0;
+    lspc_.TransmitAsync(lspc::MessageTypesToPC::CPUload, (uint8_t *)printingBuffer_, printingBuffer - printingBuffer_);
 }

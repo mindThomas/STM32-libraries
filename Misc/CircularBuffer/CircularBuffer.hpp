@@ -36,13 +36,16 @@ template<typename T>
 class CircularBuffer
 {
 public:
-    CircularBuffer(uint32_t size, bool allowOverrun = false)
+    CircularBuffer(uint32_t size, bool allowOverrun = false, bool threadSafe = false)
         : _buffer(0)
         , _bufferSize(size)
         , _bufferWriteIdx(0)
         , _bufferReadIdx(0)
         , _allowOverrun(allowOverrun)
         , _overrunDetected(false)
+#ifdef USE_FREERTOS
+        , _bufferSemaphore(NULL)
+#endif
     {
         if (!size)
             return;
@@ -59,13 +62,15 @@ public:
         memset(_buffer, 0, size * sizeof(T));
 
 #ifdef USE_FREERTOS
-        _bufferSemaphore = xSemaphoreCreateBinary();
-        if (_bufferSemaphore == NULL) {
-            ERROR("Could not create Circular buffer semaphore");
-            return;
+        if (threadSafe) {
+            _bufferSemaphore = xSemaphoreCreateBinary();
+            if (_bufferSemaphore == NULL) {
+                ERROR("Could not create Circular buffer semaphore");
+                return;
+            }
+            vQueueAddToRegistry(_bufferSemaphore, "CircularBuffer semaphore");
+            xSemaphoreGive(_bufferSemaphore); // give the semaphore the first time
         }
-        vQueueAddToRegistry(_bufferSemaphore, "CircularBuffer semaphore");
-        xSemaphoreGive(_bufferSemaphore); // give the semaphore the first time
 #endif
     }
 
@@ -80,8 +85,10 @@ public:
         }
 
 #ifdef USE_FREERTOS
-        vQueueUnregisterQueue(_bufferSemaphore);
-        vSemaphoreDelete(_bufferSemaphore);
+        if (_bufferSemaphore != NULL) {
+            vQueueUnregisterQueue(_bufferSemaphore);
+            vSemaphoreDelete(_bufferSemaphore);
+        }
 #endif
     }
 
@@ -93,7 +100,9 @@ public:
             return; // error, buffer is full
 
 #ifdef USE_FREERTOS
-        xSemaphoreTake(_bufferSemaphore, (TickType_t)portMAX_DELAY); // take hardware resource
+        if (_bufferSemaphore != NULL) { // thread safety
+            xSemaphoreTake(_bufferSemaphore, (TickType_t) portMAX_DELAY); // take hardware resource
+        }
 #endif
 
         _buffer[_bufferWriteIdx] = packet;
@@ -110,7 +119,9 @@ public:
         }
 
 #ifdef USE_FREERTOS
-        xSemaphoreGive(_bufferSemaphore); // give hardware resource back
+        if (_bufferSemaphore != NULL) { // thread safety
+            xSemaphoreGive(_bufferSemaphore); // give hardware resource back
+        }
 #endif
     }
 
@@ -141,7 +152,9 @@ public:
             return T(); // error, buffer is empty
 
 #ifdef USE_FREERTOS
-        xSemaphoreTake(_bufferSemaphore, (TickType_t)portMAX_DELAY); // take hardware resource
+        if (_bufferSemaphore != NULL) { // thread safety
+            xSemaphoreTake(_bufferSemaphore, (TickType_t) portMAX_DELAY); // take hardware resource
+        }
 #endif
 
         T packet = _buffer[_bufferReadIdx];
@@ -151,7 +164,9 @@ public:
         _overrunDetected = false;
 
 #ifdef USE_FREERTOS
-        xSemaphoreGive(_bufferSemaphore); // give hardware resource back
+        if (_bufferSemaphore != NULL) { // thread safety
+            xSemaphoreGive(_bufferSemaphore); // give hardware resource back
+        }
 #endif
 
         return packet;

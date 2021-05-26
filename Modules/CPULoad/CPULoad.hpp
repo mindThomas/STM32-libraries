@@ -21,6 +21,7 @@
 // FreeRTOS include for processing task
 #ifdef USE_FREERTOS
 #include "FreeRTOS.h"
+#include "semphr.h"
 #else
 #error "CPU Load should be used with FreeRTOS"
 #endif
@@ -32,20 +33,31 @@
 class CPULoad
 {
 	private:
-		const uint32_t CPULOAD_THREAD_STACK = 256;
+        static constexpr uint32_t CPULOAD_THREAD_STACK = 256;
 
 	public:
 		CPULoad(LSPC& lspc, uint32_t cpuLoadTaskPriority);
 		~CPULoad();
 
+		void SetRefreshRate(uint32_t sleepMs);
+		void EnablePrinting(bool enable);
+		void Print(); // print/send CPULoad package now
+
     private:
-        void TaskRunTimeStats(char * pcWriteBuffer);
-        void MemoryStats(char * pcWriteBuffer);
+        void ComputeTaskStats();
+        void PrintTaskStats();
+        void PrintMemoryStats();
+        void PrintQueueStats();
 
 	private:
 		TaskHandle_t cpuLoadTaskHandle_;
+        SemaphoreHandle_t printingSemaphore_;
 
 		LSPC& lspc_;
+
+        uint32_t sleepMs_{1000};
+		bool printingEnabled_{true};
+		char * printingBuffer_;
 
 		std::map<TaskHandle_t, uint32_t> prevTaskRunTime;
         uint32_t prevTotalRunTime{0};

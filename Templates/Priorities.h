@@ -53,7 +53,7 @@
 #define APPLICATION_TEMPLATE_PRIORITY 0
 #define CPULOAD_PRIORITY 1
 #define CALIBRATION_SWEEP_PRIORITY 2
-#define DEBUG_MESSAGE_PRIORITY 4
+#define DEBUG_MESSAGE_PRIORITY			4  // tasks requiring debug messages to be packed should have a higher priority than this
 #define TIMER_SOFT_CALLBACK_PRIORITY 5
 #define CAN_RECEIVER_PRIORITY 9
 #define UART_RECEIVER_PRIORITY 10

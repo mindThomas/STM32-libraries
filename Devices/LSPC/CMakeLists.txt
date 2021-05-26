@@ -17,3 +17,6 @@ add_library_option_with_dependency(${LIBRARY_NAME} DEBUG Debug)
 # Select using e.g. 'enable_option(your_target LSPC_ "UART")'
 add_library_option_with_dependency(${LIBRARY_NAME} UART $<TARGET_PROPERTY:DEVICE_FAMILY>_UART)
 add_library_option_with_dependency(${LIBRARY_NAME} USB $<TARGET_PROPERTY:DEVICE_FAMILY>_USBCDC)
+
+# Define LSPC_TX_QUEUE_LENGTH as configurable option
+add_configurable_library_option(${LIBRARY_NAME} TX_QUEUE_LENGTH)

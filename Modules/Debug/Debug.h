@@ -67,7 +67,7 @@
 class Debug
 {
 	private:
-		const int THREAD_STACK_SIZE = 256; // notice that this much stack is apparently necessary to avoid issues
+		const int THREAD_STACK_SIZE = 64;
 		const uint32_t THREAD_PRIORITY = DEBUG_MESSAGE_PRIORITY;
 
 	public:
@@ -106,19 +106,18 @@ class Debug
 		void * com_{0}; // Interface object pointer
 	#ifdef USE_FREERTOS
 		SemaphoreHandle_t mutex_;
-		TaskHandle_t _TaskHandle;
 	#endif
 		void * debugPulsePin_{0}; // of class IO
 
 	#ifdef DEBUG_PRINT_ENABLED
+    #ifdef DEBUG_USE_LSPC
 		char messageBuffer_[MAX_DEBUG_TEXT_LENGTH];
 		uint16_t currentBufferLocation_;
-	#endif
 
-
-	public:
-		static Debug debugHandle;
-		static bool handleCreated;
+        SemaphoreHandle_t packagedDataToSend_;
+        TaskHandle_t _TaskHandle;
+    #endif
+    #endif
 
 };
 

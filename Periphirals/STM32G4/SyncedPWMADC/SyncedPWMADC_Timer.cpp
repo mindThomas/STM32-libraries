@@ -21,6 +21,8 @@
 #include <math.h>   // for roundf
 #include <string.h> // for memset
 
+#include <Priorities.h>
+
 #ifdef STM32G4_SYNCEDPWMADC_USE_DEBUG
 #include <Debug/Debug.h>
 #else
@@ -79,6 +81,79 @@ void SyncedPWMADC::ConfigureDigitalPins()
     HAL_GPIO_WritePin(GPIOB, GPIO_InitStruct.Pin, GPIO_PIN_RESET);
 }
 
+void SyncedPWMADC::EnableFullOn(bool Direction)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    /** GPIO Configuration
+    PA8     ------> TIM1_CH1		[CH1-Positive]
+    PC13    ------> TIM1_CH1N		[CH1-Negative]
+    PA10    ------> TIM1_CH3		[CH3-Positive]
+    PB15    ------> TIM1_CH3N		[CH3-Negative]
+    */
+    GPIO_InitStruct.Pin       = GPIO_PIN_13;
+    GPIO_InitStruct.Mode      = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin       = GPIO_PIN_15;
+    GPIO_InitStruct.Mode      = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin       = GPIO_PIN_8 | GPIO_PIN_10;
+    GPIO_InitStruct.Mode      = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    if (Direction) { // Forward
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);   // TIM1_CH1  = LOW
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);    // TIM1_CH1N = HIGH
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);    // TIM3_CH3  = HIGH
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);  // TIM3_CH3N = LOW
+    } else {
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);     // TIM1_CH1  = HIGH
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);  // TIM1_CH1N = LOW
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);  // TIM3_CH3  = LOW
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);    // TIM3_CH3N = HIGH
+    }
+}
+
+void SyncedPWMADC::DisableFullOn()
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    /** GPIO Configuration
+    PA8     ------> TIM1_CH1		[CH1-Positive]
+    PC13    ------> TIM1_CH1N		[CH1-Negative]
+    PA10    ------> TIM1_CH3		[CH3-Positive]
+    PB15    ------> TIM1_CH3N		[CH3-Negative]
+    */
+    GPIO_InitStruct.Pin       = GPIO_PIN_13;
+    GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF4_TIM1;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin       = GPIO_PIN_15;
+    GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF4_TIM1;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin       = GPIO_PIN_8 | GPIO_PIN_10;
+    GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull      = GPIO_NOPULL;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF6_TIM1;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
 void SyncedPWMADC::DeInitDigitalPins()
 {
     HAL_GPIO_DeInit(GPIOC, GPIO_PIN_13);
@@ -119,15 +194,18 @@ void SyncedPWMADC::InitTimer(uint32_t frequency)
     }
 
     TIM_OC_InitTypeDef sConfigOC = {0};
-    sConfigOC.OCMode             = TIM_OCMODE_PWM1;
-    sConfigOC.Pulse              = 0;
+    sConfigOC.OCMode             = TIM_OCMODE_PWM1; // Up-counting, PWM Mode 1 -> active when CNT < CCR. See "Cross
+    sConfigOC.Pulse              = 0;               // series Timer overview.pdf"
     sConfigOC.OCFastMode         = TIM_OCFAST_DISABLE;
 
     // Define polarity when channel is enabled and disabled
+    // We use PWM mode 1, edge-aligned, and thus we want to use active-high polarity such that the output is high
+    // as long as the timer CNT < CCR
+    // See "PWM edge-aligned mode" section of the Reference Manual
     sConfigOC.OCPolarity   = TIM_OCPOLARITY_HIGH;
     sConfigOC.OCIdleState  = TIM_OCIDLESTATE_RESET;
-    sConfigOC.OCNPolarity  = TIM_OCPOLARITY_HIGH;
-    sConfigOC.OCNIdleState = TIM_OCIDLESTATE_RESET;
+    sConfigOC.OCNPolarity  = TIM_OCNPOLARITY_HIGH;
+    sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
 
     /* Configure main H-bridge PWM outputs */
     if (HAL_TIM_PWM_ConfigChannel(&hTimer, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -182,14 +260,11 @@ void SyncedPWMADC::InitTimer(uint32_t frequency)
     }
 
     /* TIM1 interrupt Init */
-    HAL_NVIC_SetPriority(TIM1_BRK_TIM15_IRQn, 7, 0);
-    HAL_NVIC_EnableIRQ(TIM1_BRK_TIM15_IRQn);
-
-    HAL_NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 5, 0);
+    HAL_NVIC_SetPriority(TIM1_UP_TIM16_IRQn, SAMPLING_TRIGGER_TIMER_INTERRUPT_PRIORITY, 0);
     HAL_NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);
 
     if (DEBUG_MODE_ENABLED) {
-        HAL_NVIC_SetPriority(TIM1_CC_IRQn, 1, 0);
+        HAL_NVIC_SetPriority(TIM1_CC_IRQn, SHORT_HIGH_PRIORITY_TIMER_INTERRUPT_PRIORITY, 0);
         HAL_NVIC_EnableIRQ(TIM1_CC_IRQn);
     }
 }
@@ -208,9 +283,9 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
 
     /* Configure the timer frequency */
     hTimer.Instance           = TIM1;
-    hTimer.Init.CounterMode   = TIM_COUNTERMODE_UP; // TIM_COUNTERMODE_CENTERALIGNED1;
+    hTimer.Init.CounterMode   = TIM_COUNTERMODE_UP; // edge-aligned up-counting
     hTimer.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    hTimer.Init.RepetitionCounter = 0; // timerSettingsNext.samplingInterval - 1;
+    hTimer.Init.RepetitionCounter = timerSettingsNext.samplingInterval - 1;
     hTimer.Init.AutoReloadPreload =
       TIM_AUTORELOAD_PRELOAD_ENABLE; // Enable preload to ensure that frequency changes will only be effectuated at the
                                      // beginning of each PWM period
@@ -247,24 +322,20 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
         }
     } else {
         // Duty cycle is defined as:
-        // Duty Cycle = (CCR+1) / (ARR+1)
-        // So 100% duty cycle is achieved by setting CCR=ARR
-        const uint16_t Duty_Count = (uint16_t)(roundf(
-          fabsf(timerSettingsNext.DutyCycle) *
-          (ARR + 1))); // note that from testing I have identified that it is more accurate not to subtract -1 here
+        // Duty Cycle = CCR / (ARR+1)
+        // So 100% duty cycle is achieved by setting CCR=ARR+1
+        const uint16_t Duty_Count = (uint16_t)(roundf(fabsf(timerSettingsNext.DutyCycle) * (ARR + 1)));
 
         if (timerSettingsNext.Direction) {
-            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1,
-                                  0); // set one side of the motor to LOW all the time  (necessary to be able to measure
-                                      // current through Shunt1)
-            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3,
-                                  Duty_Count); // control the duty cycle with the other side of the motor
+            // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, 0);
+            // control the duty cycle with the other side of the motor
+            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, Duty_Count);
         } else {
-            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1,
-                                  Duty_Count); // control the duty cycle with the other side of the motor
-            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3,
-                                  0); // set one side of the motor to LOW all the time  (necessary to be able to measure
-                                      // current through Shunt1)
+            // control the duty cycle with the other side of the motor
+            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_1, Duty_Count);
+            // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)
+            __HAL_TIM_SET_COMPARE(&hTimer, TIM_CHANNEL_3, 0);
         }
 
         if (!fixed_prescaler) {
@@ -276,8 +347,8 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
         }
     }
 
-    timerSettingsNext.InvalidateSamples =
-      1; // these timer setting changes invalidates the current sample since it might affect the sample ordering
+    // these timer setting changes invalidates the current sample since it might affect the sample ordering
+    timerSettingsNext.InvalidateSamples = 1;
     timerSettingsNext.Changed = true;
     xSemaphoreGive(_timerSettingsMutex); // unlock settings
 }
@@ -288,7 +359,6 @@ void SyncedPWMADC::DeInitTimer()
     __HAL_RCC_TIM1_CLK_DISABLE();
 
     /* TIM1 interrupt DeInit */
-    HAL_NVIC_DisableIRQ(TIM1_BRK_TIM15_IRQn);
     HAL_NVIC_DisableIRQ(TIM1_UP_TIM16_IRQn);
 
     if (DEBUG_MODE_ENABLED) {
@@ -298,6 +368,12 @@ void SyncedPWMADC::DeInitTimer()
 
 void SyncedPWMADC::Timer_ConfigureBrakeMode()
 {
+    /* OBS. As per reference manual changes to the output enable is only effective after next commutation
+     * On channels having a complementary output, this bit is preloaded. If the CCPC bit is
+     * set in the TIMx_CR2 register then the CC1E active bit takes the new value from the
+     * preloaded bit only when a Commutation event is generated.
+     */
+
     // Enable all timer outputs to enable Brake mode
     TIM_CCxChannelCmd(hTimer.Instance, TIM_CHANNEL_1, TIM_CCx_ENABLE);
     TIM_CCxNChannelCmd(hTimer.Instance, TIM_CHANNEL_1, TIM_CCxN_ENABLE);
@@ -307,6 +383,12 @@ void SyncedPWMADC::Timer_ConfigureBrakeMode()
 
 void SyncedPWMADC::Timer_ConfigureCoastMode(bool direction)
 {
+    /* OBS. As per reference manual changes to the output enable is only effective after next commutation
+     * On channels having a complementary output, this bit is preloaded. If the CCPC bit is
+     * set in the TIMx_CR2 register then the CC1E active bit takes the new value from the
+     * preloaded bit only when a Commutation event is generated.
+     */
+
     if (direction) { // Forward
         // In forward direction it is CH3,CH3N that changes.
         // During COAST mode CH3N is forced to be LOW at all times, causing LOW PWM to deactivate the CH3,CH3N MOSFET
@@ -394,7 +476,7 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
     if (SAMPLE_IN_EVERY_PWM_CYCLE)
         return; // sampling interval is not supported when sampling in every PWM cycle
 
-    // In SAMPLE_IN_EVERY_PWM_CYCLE mode sample interval should at least be 2 PWM periods
+    // We can not sample faster than every 2nd PWM period when SAMPLE_IN_EVERY_PWM_CYCLE is not enabled
     if (samplingInterval < 2)
         samplingInterval = 2;
 
@@ -413,9 +495,6 @@ void SyncedPWMADC::SetSamplingInterval(uint16_t samplingInterval)
 
     timerSettingsNext.samplingInterval = samplingInterval;
     hTimer.Instance->RCR               = timerSettingsNext.samplingInterval - 1;
-
-    // The change is effective instantaneously
-    timerSettingsCurrent.samplingInterval = timerSettingsNext.samplingInterval;
 
     xSemaphoreGive(_timerSettingsMutex); // unlock settings
 }
@@ -441,6 +520,17 @@ void SyncedPWMADC::SetNumberOfAveragingSamples(uint16_t numSamples)
         timerSettingsNext.Changed = true;
         xSemaphoreGive(_timerSettingsMutex); // unlock settings
     }
+#ifdef STM32G4_SYNCEDPWMADC_USE_DEBUG
+    else {
+        if (numSamples == 0) {
+            Debug::print("Number of Averaging samples can not be 0\n");
+        } else if (numSamples >= timerSettingsNext.samplingInterval - 1) {
+            Debug::printf("Number of Averaging samples (%d) too close to sampling interval of %d\n", numSamples, timerSettingsNext.samplingInterval);
+        } else {
+            Debug::printf("Too many averaging samples (%d). Exceeding DMA buffer size of %d\n", numSamples, MAX_SAMPLING_NUM_SAMPLES);
+        }
+    }
+#endif
 }
 
 void SyncedPWMADC::TIM_CCxNChannelCmd(TIM_TypeDef* TIMx, uint32_t Channel, uint32_t ChannelNState)
@@ -482,10 +572,12 @@ void SyncedPWMADC::StopPWM()
 {
     _TimerEnabled = false;
 
-    HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_5);
-    HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_6);
+    HAL_TIM_PWM_Stop(&hTimer, TIM_CHANNEL_1);
+    HAL_TIMEx_PWMN_Stop(&hTimer, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Stop(&hTimer, TIM_CHANNEL_3);
+    HAL_TIMEx_PWMN_Stop(&hTimer, TIM_CHANNEL_3);
+    HAL_TIM_PWM_Stop(&hTimer, TIM_CHANNEL_5);
+    HAL_TIM_PWM_Stop(&hTimer, TIM_CHANNEL_6);
 
     if (DEBUG_MODE_ENABLED) {
         HAL_TIM_PWM_Stop_IT(&hTimer, TIM_CHANNEL_2);

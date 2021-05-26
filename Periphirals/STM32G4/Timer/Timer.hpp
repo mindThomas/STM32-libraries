@@ -33,7 +33,7 @@
 class Timer
 {
 	private:
-		const uint16_t TIMER_DEFAULT_MAXVALUE = 0xFFFF;
+        static constexpr uint16_t TIMER_DEFAULT_MAXVALUE = 0xFFFF;
 
 	public:
 		typedef enum timer_t {

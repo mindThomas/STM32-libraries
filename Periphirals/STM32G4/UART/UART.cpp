@@ -58,7 +58,7 @@ UART::UART(port_t port, uint32_t baud, uint32_t bufferLength, bool DMA_enabled)
     , _bufferReadIdx(0)
 #ifdef USE_FREETOS
     , _callbackTaskHandle(0)
-    , _resourceSemaphore(0)
+    , _resourceMutex(0)
 #endif
     , _callbackChunkLength(0)
     , _txPointer(0)
@@ -139,13 +139,12 @@ void UART::ConfigurePeripheral()
     }
 
 #ifdef USE_FREERTOS
-    _resourceSemaphore = xSemaphoreCreateBinary();
-    if (_resourceSemaphore == NULL) {
+    _resourceMutex = xSemaphoreCreateMutex(); // also give the semaphore the first time
+    if (_resourceMutex == NULL) {
         ERROR("Could not create UART resource semaphore");
         return;
     }
-    vQueueAddToRegistry(_resourceSemaphore, "UART Resource");
-    xSemaphoreGive(_resourceSemaphore); // give the semaphore the first time
+    vQueueAddToRegistry(_resourceMutex, "UART Resource");
 
     // Create binary semaphore for indicating when a single byte has finished transmitting (for flagging to the transmit
     // thread)
@@ -388,7 +387,7 @@ void UART::DeregisterCallback()
 
 void UART::TransmitBlocking(uint8_t* buffer, uint32_t bufLen)
 {
-    if (DMA_Enabled) {
+    if (DMA_Enabled && bufLen > 10) { // do not use DMA if the package is too short (due to overhead in initiating the DMA transfer)
         TransmitBlockingDMA(buffer, bufLen);
     } else {
         TransmitBlockingAutoInterrupt(buffer, bufLen);
@@ -412,8 +411,7 @@ void UART::TransmitBlockingDMA(uint8_t* buffer, uint32_t bufLen)
 #ifdef USE_FREERTOS
     xSemaphoreTake(_transmitFinished, (TickType_t)portMAX_DELAY); // block until it has finished sending the byte
 #else
-    while (!_transmitFinished)
-        ;
+    while (!_transmitFinished);
     _transmitFinished = false;
 #endif
 }
@@ -434,25 +432,49 @@ void UART::StartDMATransfer(uint8_t* pData, uint16_t Size)
     _handle.gState    = HAL_UART_STATE_BUSY_TX;
 
     if (_handle.hdmatx != NULL) {
-        /* Set the UART DMA transfer complete callback */
-        _handle.hdmatx->XferCpltCallback = UART::DMATransmitCplt;
+        if (_handle.hdmatx->Instance->CCR & DMA_CCR_EN) {
+            // DMA already enabled, e.g. we have already performed a transfer before.
+            // Thus we only need to re-initiate a new transfer instead of setting all the DMA settings up again.
+            __HAL_DMA_DISABLE(_handle.hdmatx);
 
-        /* Set the UART DMA Half transfer complete callback */
-        _handle.hdmatx->XferHalfCpltCallback = NULL;
+            /* Change DMA peripheral state */
+            _handle.hdmatx->State = HAL_DMA_STATE_BUSY;
+            _handle.hdmatx->ErrorCode = HAL_DMA_ERROR_NONE;
 
-        /* Set the DMA error callback */
-        _handle.hdmatx->XferErrorCallback = UART::DMAError;
+            /* Clear all flags */
+            _handle.hdmatx->DmaBaseAddress->IFCR = (DMA_ISR_GIF1 << (_handle.hdmatx->ChannelIndex & 0x1FU));
 
-        /* Set the DMA abort callback */
-        _handle.hdmatx->XferAbortCallback = NULL;
+            /* Configure DMA Channel source address */
+            _handle.hdmatx->Instance->CMAR = (uint32_t) pData;
 
-        /* Enable the UART transmit DMA channel */
-        if (HAL_DMA_Start_IT(_handle.hdmatx, (uint32_t)_handle.pTxBuffPtr, (uint32_t)&_handle.Instance->TDR, Size) !=
-            HAL_OK) {
-            /* Set error code to DMA */
-            _handle.ErrorCode = HAL_UART_ERROR_DMA;
+            /* Configure DMA Channel data length */
+            _handle.hdmatx->Instance->CNDTR = Size;
 
-            return;
+            /* Enable Transfer complete and Transfer error interrupt */
+            __HAL_DMA_ENABLE_IT(_handle.hdmatx, (DMA_IT_TC | DMA_IT_TE));
+            __HAL_DMA_ENABLE(_handle.hdmatx);
+        } else {
+            /* Set the UART DMA transfer complete callback */
+            _handle.hdmatx->XferCpltCallback = UART::DMATransmitCplt;
+
+            /* Set the UART DMA Half transfer complete callback */
+            _handle.hdmatx->XferHalfCpltCallback = NULL;
+
+            /* Set the DMA error callback */
+            _handle.hdmatx->XferErrorCallback = UART::DMAError;
+
+            /* Set the DMA abort callback */
+            _handle.hdmatx->XferAbortCallback = NULL;
+
+            /* Enable the UART transmit DMA channel */
+            if (HAL_DMA_Start_IT(_handle.hdmatx, (uint32_t) _handle.pTxBuffPtr, (uint32_t) &_handle.Instance->TDR,
+                                 Size) !=
+                HAL_OK) {
+                /* Set error code to DMA */
+                _handle.ErrorCode = HAL_UART_ERROR_DMA;
+
+                return;
+            }
         }
     }
 
@@ -491,8 +513,7 @@ void UART::TransmitBlockingAutoInterrupt(uint8_t* buffer, uint32_t bufLen)
 #ifdef USE_FREERTOS
     xSemaphoreTake(_transmitFinished, (TickType_t)portMAX_DELAY); // block until it has finished sending the byte
 #else
-    while (!_transmitFinished)
-        ;
+    while (!_transmitFinished);
     _transmitFinished = false;
 #endif
 }
@@ -528,8 +549,7 @@ void UART::TransmitBlockingManualInterrupt(uint8_t* buffer, uint32_t bufLen)
 #ifdef USE_FREERTOS
         xSemaphoreTake(_transmitFinished, (TickType_t)portMAX_DELAY); // block until it has finished sending the byte
 #else
-        while (!_transmitFinished)
-            ;
+        while (!_transmitFinished);
         _transmitFinished = false;
 #endif
     } while (--bufLen > 0);
@@ -561,20 +581,19 @@ void UART::TransmitBlockingHardPolling(uint8_t* buffer, uint32_t bufLen)
     } while (--bufLen > 0);
 
     /* Wait for TC flag to be raised for last char */
-    while (__HAL_UART_GET_FLAG(&_handle, UART_FLAG_TC) == RESET)
-        ;
+    while (__HAL_UART_GET_FLAG(&_handle, UART_FLAG_TC) == RESET);
 }
 
 void UART::Write(uint8_t byte)
 {
 #ifdef USE_FREERTOS
-    xSemaphoreTake(_resourceSemaphore, (TickType_t)portMAX_DELAY); // take hardware resource
+    xSemaphoreTake(_resourceMutex, (TickType_t)portMAX_DELAY); // take hardware resource
 
     // OBS! This should be replaced with a non-blocking call by making a TX queue and a processing thread in the UART
     // object
     TransmitBlocking(&byte, 1); // transmit with interrupt-based semaphore waiting (blocking only this thread)
 
-    xSemaphoreGive(_resourceSemaphore); // give hardware resource back
+    xSemaphoreGive(_resourceMutex); // give hardware resource back
 #else
     TransmitBlocking(&byte, 1);
 #endif
@@ -583,11 +602,11 @@ void UART::Write(uint8_t byte)
 uint32_t UART::Write(uint8_t* buffer, uint32_t length)
 {
 #ifdef USE_FREERTOS
-    xSemaphoreTake(_resourceSemaphore, (TickType_t)portMAX_DELAY); // take hardware resource
+    xSemaphoreTake(_resourceMutex, (TickType_t)portMAX_DELAY); // take hardware resource
 
     TransmitBlocking(buffer, length); // transmit with interrupt-based semaphore waiting (blocking only this thread)
 
-    xSemaphoreGive(_resourceSemaphore); // give hardware resource back
+    xSemaphoreGive(_resourceMutex); // give hardware resource back
 #else
     TransmitBlocking(buffer, length);
 #endif
