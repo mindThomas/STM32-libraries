@@ -105,7 +105,7 @@ bool EEPROM::EnableSection(uint16_t address, uint16_t sectionSize)
 {
     bool SectionAlreadyInUse = false;
 
-    if ((address % 2) != 0)
+    if ((address % 4) != 0)
         return false; // address not aligned - section start addresses has to be aligned
 
 #ifdef USE_FREERTOS
@@ -113,8 +113,8 @@ bool EEPROM::EnableSection(uint16_t address, uint16_t sectionSize)
 #endif
 
     // sectionSize is given in bytes
-    uint16_t virtAddress   = address / 2;
-    uint16_t sectionSize16 = sectionSize / 2 + (sectionSize % 2);
+    uint16_t virtAddress   = address / 4;
+    uint16_t sectionSize16 = sectionSize / 4 + (sectionSize % 4);
 
     // OBS. This function should have a check of whether the section is occupied already
     int16_t i;
@@ -186,19 +186,16 @@ void EEPROM::Write8(uint16_t address, uint8_t value)
 
     HAL_FLASH_Unlock();
 
-    uint16_t virtAddr = address / 2;
-    bool     LSB      = ((address % 2) == 0); // little endian format, so LSB byte is at address
+    uint16_t virtAddr = address / 4;
+    uint8_t  offset   = (address % 4); // little endian format, so LSB byte is at address
+    uint32_t mask     = (uint32_t)0xFF << 8 * offset;
 
-    uint16_t read;
+    uint32_t out = (uint32_t)value << 8 * offset;
+    uint32_t read;
     if (ReadVariable(virtAddr, &read) == EEPROM_FLASH_COMPLETE) {
-        uint16_t tmp;
-        if (LSB)
-            tmp = value | (read & 0xFF00);
-        else
-            tmp = ((uint16_t)value) << 8 | (read & 0xFF);
-
-        WriteVariable(virtAddr, tmp);
+        out |= ~mask & read;
     }
+    WriteVariable(virtAddr, out);
 
     HAL_FLASH_Lock();
 
@@ -215,28 +212,30 @@ void EEPROM::Write16(uint16_t address, uint16_t value)
 
     HAL_FLASH_Unlock();
 
-    bool aligned = ((address % 2) == 0);
+    uint16_t virtAddr = address / 4;
+    uint8_t  offset   = (address % 4); // little endian format, so LSB byte is at address
 
-    if (aligned) {
-        uint16_t virtAddr = address / 2;
-        WriteVariable(virtAddr, value);
-    } else {
-        uint16_t virtAddr1 =
-          address / 2; // Need to place LSB from value into MSB of this address, while still keeping LSB
-        uint16_t virtAddr2 =
-          virtAddr1 + 1; // Need to place MSB from value into LSB of this address, while still keeping MSB
-
-        uint16_t read1, read2;
-        uint16_t write1, write2;
-        if (ReadVariable(virtAddr1, &read1) == EEPROM_FLASH_COMPLETE) {
-            if (ReadVariable(virtAddr2, &read2) == EEPROM_FLASH_COMPLETE) {
-                write1 = ((value & 0xFF) << 8) | (read1 & 0xFF);
-                write2 = ((value >> 8) & 0xFF) | (read2 & 0xFF00);
-                if (WriteVariable(virtAddr1, write1) == EEPROM_FLASH_COMPLETE) {
-                    WriteVariable(virtAddr2, write2);
-                }
-            }
+    if (offset < 3) { // within a single address
+        uint32_t mask = (uint32_t)0xFFFF << 8 * offset;
+        uint32_t out  = (uint32_t)value << 8 * offset;
+        uint32_t read;
+        if (ReadVariable(virtAddr, &read) == EEPROM_FLASH_COMPLETE) {
+            out |= ~mask & read;
         }
+        WriteVariable(virtAddr, out);
+    } else { // offset == 3
+        uint32_t out = ((uint32_t)value & 0xFF) << 24;
+        uint32_t read;
+        if (ReadVariable(virtAddr, &read) == EEPROM_FLASH_COMPLETE) {
+            out |= 0xFFFFFF & read;
+        }
+        WriteVariable(virtAddr, out);
+
+        out = ((uint32_t)value & 0xFF00) >> 8;
+        if (ReadVariable(virtAddr + 1, &read) == EEPROM_FLASH_COMPLETE) {
+            out |= 0xFFFFFF00 & read;
+        }
+        WriteVariable(virtAddr + 1, out);
     }
 
     HAL_FLASH_Lock();
@@ -254,36 +253,26 @@ void EEPROM::Write32(uint16_t address, uint32_t value)
 
     HAL_FLASH_Unlock();
 
-    bool aligned = ((address % 2) == 0);
+    uint16_t virtAddr = address / 4;
+    uint8_t  offset   = (address % 4); // little endian format, so LSB byte is at address
 
-    if (aligned) {
-        uint16_t virtAddr  = address / 2;
-        uint16_t value_lsb = value & 0xFFFF;
-        uint16_t value_msb = (value >> 16) & 0xFFFF;
-        WriteVariable(virtAddr, value_lsb);
-        WriteVariable(virtAddr + 1, value_msb);
-    } else {
-        uint16_t virtAddr1 =
-          address / 2; // Need to place 8 LSB bits from value into 8 MSB bits of this address, while still keeping LSB
-        uint16_t virtAddr2 = virtAddr1 + 1; // Need to place the middle bits from value into this address
-        uint16_t virtAddr3 =
-          virtAddr2 + 1; // Need to place 8 MSB bits from value into 8 LSB bits of this address, while still keeping MSB
-
-        uint16_t read1, read2, read3;
-        uint16_t write1, write2, write3;
-        if (ReadVariable(virtAddr1, &read1) == EEPROM_FLASH_COMPLETE) {
-            if (ReadVariable(virtAddr2, &read2) == EEPROM_FLASH_COMPLETE) {
-                if (ReadVariable(virtAddr3, &read3) == EEPROM_FLASH_COMPLETE) {
-                    write1 = ((value & 0xFF) << 8) | (read1 & 0xFF);
-                    write2 = ((value >> 8) & 0xFF) | (read2 & 0xFF00);
-                    if (WriteVariable(virtAddr1, write1) == EEPROM_FLASH_COMPLETE) {
-                        if (WriteVariable(virtAddr2, write2) == EEPROM_FLASH_COMPLETE) {
-                            WriteVariable(virtAddr3, write3);
-                        }
-                    }
-                }
-            }
+    if (offset == 0) { // within a single address
+        WriteVariable(virtAddr, value);
+    } else { // combination of two addresses
+        uint32_t out = value << 8*offset;
+        uint32_t read;
+        if (ReadVariable(virtAddr, &read) == EEPROM_FLASH_COMPLETE) {
+            uint32_t mask = ((uint32_t)0xFFFFFFFF) << 8*offset;
+            out |= ~mask & read;
         }
+        WriteVariable(virtAddr, out);
+
+        out = value >> 8*(4-offset);
+        if (ReadVariable(virtAddr + 1, &read) == EEPROM_FLASH_COMPLETE) {
+            uint32_t mask = ((uint32_t)0xFFFFFFFF) << 8*offset;
+            out |= mask & read;
+        }
+        WriteVariable(virtAddr + 1, out);
     }
 
     HAL_FLASH_Lock();
@@ -300,15 +289,12 @@ uint8_t EEPROM::Read8(uint16_t address)
     xSemaphoreTake(resourceSemaphore_, (TickType_t)portMAX_DELAY); // take hardware resource
 #endif
 
-    uint16_t virtAddr = address / 2;
-    bool     LSB      = ((address % 2) == 0); // little endian format, so LSB byte is at address
+    uint16_t virtAddr = address / 4;
+    uint8_t  offset   = (address % 4); // little endian format, so LSB byte is at address
 
-    uint16_t tmp;
+    uint32_t tmp;
     if (ReadVariable(virtAddr, &tmp) == EEPROM_FLASH_COMPLETE) {
-        if (LSB)
-            value = tmp & 0xFF;
-        else
-            value = (tmp >> 8) & 0xFF;
+        value = (tmp >> 8 * offset) & 0xFF;
     }
 
 #ifdef USE_FREERTOS
@@ -325,20 +311,20 @@ uint16_t EEPROM::Read16(uint16_t address)
     xSemaphoreTake(resourceSemaphore_, (TickType_t)portMAX_DELAY); // take hardware resource
 #endif
 
-    bool aligned = ((address % 2) == 0);
+    uint16_t virtAddr = address / 4;
+    uint8_t  offset   = (address % 4); // little endian format, so LSB byte is at address
 
-    if (aligned) {
-        uint16_t virtAddr = address / 2;
-        uint16_t tmp;
-        if (ReadVariable(virtAddr, &tmp) == EEPROM_FLASH_COMPLETE)
-            value = tmp;
-    } else {
-        uint16_t virtAddr1 = address / 2;   // need to take MSB from this address and put into LSB of value
-        uint16_t virtAddr2 = virtAddr1 + 1; // need to take LSB from this address and put into MSB of value
-        uint16_t tmp1, tmp2;
-        if (ReadVariable(virtAddr1, &tmp1) == EEPROM_FLASH_COMPLETE)
-            if (ReadVariable(virtAddr2, &tmp2) == EEPROM_FLASH_COMPLETE)
-                value = ((tmp1 >> 8) & 0xFF) | ((tmp2 & 0xFF) << 8);
+    if (offset < 3) { // within a single address
+        uint32_t tmp;
+        if (ReadVariable(virtAddr, &tmp) == EEPROM_FLASH_COMPLETE) {
+            value = (tmp >> 8 * offset) & 0xFFFF;
+        }
+    } else { // offset == 3
+        uint32_t readLSB, readMSB;
+        if (ReadVariable(virtAddr, &readLSB) == EEPROM_FLASH_COMPLETE &&
+            ReadVariable(virtAddr + 1, &readMSB) == EEPROM_FLASH_COMPLETE) {
+            value = ((readLSB >> 24) & 0xFF) | ((readMSB & 0xFF) << 8);
+        }
     }
 
 #ifdef USE_FREERTOS
@@ -355,26 +341,22 @@ uint32_t EEPROM::Read32(uint16_t address)
     xSemaphoreTake(resourceSemaphore_, (TickType_t)portMAX_DELAY); // take hardware resource
 #endif
 
-    bool aligned = ((address % 2) == 0);
+    uint16_t virtAddr = address / 4;
+    uint8_t  offset   = (address % 4); // little endian format, so LSB byte is at address
 
-    if (aligned) {
-        uint16_t virtAddr = address / 2;
-        uint16_t tmp_lo, tmp_hi;
-        if (ReadVariable(virtAddr, &tmp_lo) == EEPROM_FLASH_COMPLETE) // little endian format
-            if (ReadVariable(virtAddr + 1, &tmp_hi) == EEPROM_FLASH_COMPLETE)
-                value = (((uint32_t)tmp_hi) << 16) | (uint32_t)tmp_lo;
-    } else {
-        uint16_t virtAddr1 = address / 2; // need to take 8 MSB bits from this address and put into 8 LSB bits of value
-        uint16_t virtAddr2 = virtAddr1 + 1; // need to take all 16 bits from this address and put in middle of value
-        uint16_t virtAddr3 =
-          virtAddr2 + 1; // need to take 8 LSB bits from this address and put into 8 MSB bits of value
-        uint16_t tmp1, tmp2, tmp3;
-        if (ReadVariable(virtAddr1, &tmp1) == EEPROM_FLASH_COMPLETE) // little endian format
-            if (ReadVariable(virtAddr2, &tmp2) == EEPROM_FLASH_COMPLETE)
-                if (ReadVariable(virtAddr3, &tmp3) == EEPROM_FLASH_COMPLETE)
-                    value = ((tmp1 >> 8) & 0xFF) | (((uint32_t)tmp2) << 8) | (((uint32_t)(tmp3 & 0xFF)) << 24);
+    if (offset == 0) { // within a single address
+        uint32_t tmp;
+        if (ReadVariable(virtAddr, &tmp) == EEPROM_FLASH_COMPLETE) {
+            value = tmp;
+        }
+    } else { // combination of two addresses
+        uint32_t readLSB, readMSB;
+        if (ReadVariable(virtAddr, &readLSB) == EEPROM_FLASH_COMPLETE &&
+            ReadVariable(virtAddr + 1, &readMSB) == EEPROM_FLASH_COMPLETE) {
+            uint32_t mask = ((uint32_t)0xFFFFFFFF) << 8*offset;
+            value = (readLSB >> 8*offset) | (readMSB & ~mask) << 8*(4-offset);
+        }
     }
-
 #ifdef USE_FREERTOS
     xSemaphoreGive(resourceSemaphore_); // give hardware resource back
 #endif
@@ -386,7 +368,7 @@ EEPROM::errorCode_t EEPROM::WriteData(uint16_t address, uint8_t* data, uint16_t 
 {
     errorCode_t status = EEPROM_ERROR;
 
-    if ((address % 2) != 0)
+    if ((address % 4) != 0)
         return EEPROM_ERROR; // address not aligned - it has to be aligned for multi-writing
 
 #ifdef USE_FREERTOS
@@ -395,15 +377,24 @@ EEPROM::errorCode_t EEPROM::WriteData(uint16_t address, uint8_t* data, uint16_t 
 
     HAL_FLASH_Unlock();
 
-    uint16_t virtAddress = address / 2;
+    uint16_t virtAddress = address / 4;
     uint16_t idx         = 0;
     while (idx < dataLength) {
-        uint16_t value = (idx+1 < dataLength) ? (uint16_t)data[idx] | (((uint16_t)data[idx + 1]) << 8) : // little endian
-                                                (uint16_t)data[idx];
+        // Pack the data little endian
+        uint32_t value = data[idx++];
+        if (idx < dataLength) {
+            value |= ((uint32_t)data[idx++]) << 8;
+        }
+        if (idx < dataLength) {
+            value |= ((uint32_t)data[idx++]) << 16;
+        }
+        if (idx < dataLength) {
+            value |= ((uint32_t)data[idx++]) << 24;
+        }
+
         if ((status = WriteVariable(virtAddress, value)) != EEPROM_FLASH_COMPLETE)
             break;
         virtAddress++;
-        idx += 2;
     }
 
     HAL_FLASH_Lock();
@@ -419,25 +410,30 @@ EEPROM::errorCode_t EEPROM::ReadData(uint16_t address, uint8_t* data, uint16_t d
 {
     errorCode_t status = EEPROM_ERROR;
 
-    if ((address % 2) != 0)
+    if ((address % 4) != 0)
         return EEPROM_ERROR; // address not aligned - it has to be aligned for multi-writing
 
 #ifdef USE_FREERTOS
     xSemaphoreTake(resourceSemaphore_, (TickType_t)portMAX_DELAY); // take hardware resource
 #endif
 
-    uint16_t virtAddress = address / 2;
+    uint16_t virtAddress = address / 4;
     uint16_t idx         = 0;
     while (idx < dataLength) {
-        uint16_t value;
+        uint32_t value;
         if ((status = ReadVariable(virtAddress, &value)) != EEPROM_FLASH_COMPLETE)
             break;
-        data[idx]     = value & 0xFF; // little endian, hence LSB corresponds to first address
-        if (idx+1 < dataLength) {
-            data[idx + 1] = (value >> 8) & 0xFF;
+        data[idx++] = value & 0xFF; // little endian, hence LSB corresponds to first address
+        if (idx < dataLength) {
+            data[idx++] = (value >> 8) & 0xFF;
+        }
+        if (idx < dataLength) {
+            data[idx++] = (value >> 16) & 0xFF;
+        }
+        if (idx < dataLength) {
+            data[idx++] = (value >> 24) & 0xFF;
         }
         virtAddress++;
-        idx += 2;
     }
 
 #ifdef USE_FREERTOS
@@ -546,8 +542,7 @@ uint16_t EEPROM::Init(void)
                     }
                 }
                 /* Mark Page1 as valid */
-                FlashStatus =
-                  HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE1_BASE_ADDRESS, valid);
+                FlashStatus = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE1_BASE_ADDRESS, valid);
 
                 /* If program operation was failed, a Flash error code is returned */
                 if (FlashStatus != HAL_OK) {
@@ -582,8 +577,7 @@ uint16_t EEPROM::Init(void)
                     }
                 }
                 /* Mark Page0 as valid */
-                FlashStatus =
-                  HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE0_BASE_ADDRESS, valid);
+                FlashStatus = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE0_BASE_ADDRESS, valid);
 
                 /* If program operation was failed, a Flash error code is returned */
                 if (FlashStatus != HAL_OK) {
@@ -614,8 +608,7 @@ uint16_t EEPROM::Init(void)
                     }
                 }
                 /* Mark Page0 as valid */
-                FlashStatus =
-                  HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE0_BASE_ADDRESS, valid);
+                FlashStatus = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE0_BASE_ADDRESS, valid);
                 /* If program operation was failed, a Flash error code is returned */
                 if (FlashStatus != HAL_OK) {
                     return FlashStatus;
@@ -670,8 +663,7 @@ uint16_t EEPROM::Init(void)
                     }
                 }
                 /* Mark Page1 as valid */
-                FlashStatus =
-                  HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE1_BASE_ADDRESS, valid);
+                FlashStatus = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, PAGE1_BASE_ADDRESS, valid);
 
                 /* If program operation was failed, a Flash error code is returned */
                 if (FlashStatus != HAL_OK) {
@@ -716,7 +708,7 @@ uint16_t EEPROM::Init(void)
  */
 uint16_t EEPROM::VerifyPageFullyErased(const uint32_t StartAddress, const uint32_t EndAddress)
 {
-    uint32_t ReadStatus   = 1;
+    uint32_t ReadStatus = 1;
     uint16_t AddressValue;
 
     /* Check each active page address starting from end */
@@ -750,11 +742,11 @@ uint16_t EEPROM::VerifyPageFullyErased(const uint32_t StartAddress, const uint32
  *           - 1: if the variable was not found
  *           - NO_VALID_PAGE: if no valid page was found.
  */
-EEPROM::errorCode_t EEPROM::ReadVariable(uint16_t VirtAddress, uint16_t* Data)
+EEPROM::errorCode_t EEPROM::ReadVariable(uint16_t VirtAddress, uint32_t* Data)
 {
-    uint16_t    ValidPage    = PAGE0;
+    uint16_t    ValidPage = PAGE0;
     uint16_t    AddressValue;
-    errorCode_t ReadStatus   = EEPROM_ERROR;
+    errorCode_t ReadStatus = EEPROM_ERROR;
     uint32_t    Address = EEPROM_START_ADDRESS, PageStartAddress = EEPROM_START_ADDRESS;
 
     /* Get active Page for read operation */
@@ -779,7 +771,7 @@ EEPROM::errorCode_t EEPROM::ReadVariable(uint16_t VirtAddress, uint16_t* Data)
         /* Compare the read address with the virtual address */
         if (AddressValue == VirtAddress) {
             /* Get content of Address-2 which is variable value */
-            *Data = (*(__IO uint16_t*)(Address - 4));
+            *Data = (*(__IO uint32_t*)(Address - 4));
 
             /* In case variable value is read, reset ReadStatus flag */
             ReadStatus = EEPROM_FLASH_COMPLETE;
@@ -805,7 +797,7 @@ EEPROM::errorCode_t EEPROM::ReadVariable(uint16_t VirtAddress, uint16_t* Data)
  *           - NO_VALID_PAGE: if no valid page was found
  *           - Flash error code: on write Flash error
  */
-EEPROM::errorCode_t EEPROM::WriteVariable(uint16_t VirtAddress, uint16_t Data)
+EEPROM::errorCode_t EEPROM::WriteVariable(uint16_t VirtAddress, uint32_t Data)
 {
     EEPROM::errorCode_t Status = EEPROM_FLASH_COMPLETE;
 
@@ -934,7 +926,7 @@ uint16_t EEPROM::FindValidPage(uint8_t Operation)
  *           - NO_VALID_PAGE: if no valid page was found
  *           - Flash error code: on write Flash error
  */
-EEPROM::errorCode_t EEPROM::VerifyPageFullWriteVariable(uint16_t VirtAddress, uint16_t Data)
+EEPROM::errorCode_t EEPROM::VerifyPageFullWriteVariable(uint16_t VirtAddress, uint32_t Data)
 {
     HAL_StatusTypeDef FlashStatus = HAL_OK;
     uint16_t          ValidPage   = PAGE0;
@@ -996,7 +988,7 @@ EEPROM::errorCode_t EEPROM::VerifyPageFullWriteVariable(uint16_t VirtAddress, ui
  *           - NO_VALID_PAGE: if no valid page was found
  *           - Flash error code: on write Flash error
  */
-EEPROM::errorCode_t EEPROM::PageTransfer(uint16_t VirtAddress, uint16_t Data)
+EEPROM::errorCode_t EEPROM::PageTransfer(uint16_t VirtAddress, uint32_t Data)
 {
     HAL_StatusTypeDef      FlashStatus    = HAL_OK;
     uint32_t               NewPageAddress = EEPROM_START_ADDRESS;

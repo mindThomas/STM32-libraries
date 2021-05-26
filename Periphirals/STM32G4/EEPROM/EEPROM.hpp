@@ -85,12 +85,12 @@ class EEPROM
 {
 public:
     /* The struct below contains a list of addresses of assigned EEPROM sections (address) */
-    /* Important not to use address 0x000 */
+    /* Important NOT to use address 0x0000 and 0xFFFF */
     const struct
     {
-        uint16_t internal        = 0x002;
+        uint16_t internal        = 0x004; // 0x004 - 0x000B
         uint16_t sys_info        = 0x050;
-        uint16_t parameters      = 0x200;
+        uint16_t parameters      = 0x210;
     } sections;
 
 public:
@@ -132,12 +132,12 @@ private:
     HAL_StatusTypeDef Format(void);
 
     uint16_t    FindValidPage(uint8_t Operation);
-    errorCode_t VerifyPageFullWriteVariable(uint16_t VirtAddress, uint16_t Data);
-    errorCode_t PageTransfer(uint16_t VirtAddress, uint16_t Data);
+    errorCode_t VerifyPageFullWriteVariable(uint16_t VirtAddress, uint32_t Data);
+    errorCode_t PageTransfer(uint16_t VirtAddress, uint32_t Data);
     uint16_t    VerifyPageFullyErased(uint32_t StartAddress, uint32_t EndAddress);
 
-    errorCode_t ReadVariable(uint16_t VirtAddress, uint16_t* Data);
-    errorCode_t WriteVariable(uint16_t VirtAddress, uint16_t Data);
+    errorCode_t ReadVariable(uint16_t VirtAddress, uint32_t* Data);
+    errorCode_t WriteVariable(uint16_t VirtAddress, uint32_t Data);
 
     uint32_t CalculateSectionsTableChecksum(void);
 
@@ -150,7 +150,7 @@ private:
     // when switching page (e.g. due to a full page)
     std::vector<uint16_t> virtAddrTable_;
 
-    uint16_t DataVar = 0;
+    uint32_t DataVar = 0;
     uint32_t Address = 0;
 
     bool WasFormattedAtBoot_;
