@@ -1,0 +1,18 @@
+set(LIBRARY_NAME STM32G4_EEPROM)
+set(LIBRARY_DEPENDENCIES
+    HAL::STM32::G4::FLASH
+    HAL::STM32::G4::FLASHEx
+    HAL::STM32::G4::RCC
+    HAL::STM32::G4::CORTEX
+    CMSIS::STM32::G4)
+set(LIBRARY_SOURCES EEPROM.cpp)
+
+message("       -- ${LIBRARY_NAME}")
+
+add_library(${LIBRARY_NAME} INTERFACE)
+target_sources(${LIBRARY_NAME} INTERFACE ${LIBRARY_SOURCES})
+target_link_libraries(${LIBRARY_NAME} INTERFACE ${LIBRARY_DEPENDENCIES})
+get_filename_component(INCLUDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+target_include_directories(${LIBRARY_NAME} INTERFACE ${INCLUDE_PATH})
+
+add_library_option_with_dependency(${LIBRARY_NAME} DEBUG Debug)
