@@ -23,7 +23,7 @@
 #ifdef STM32H7_ADC_USE_DEBUG
 #include <Debug/Debug.h>
 #else
-#define ERROR(msg) ((void)0U); // not implemented
+#define ERROR(msg) while(1) { __asm("bkpt #0"); }; // break on error and halt if debugging
 #endif
 
 ADC::hardware_resource_t* ADC::resADC1      = 0;

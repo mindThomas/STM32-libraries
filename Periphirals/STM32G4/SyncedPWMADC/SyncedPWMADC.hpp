@@ -90,7 +90,7 @@ class SyncedPWMADC
 
 		// Debugging parameters
         static constexpr bool DEBUG_MODE_ENABLED = false;
-        static constexpr bool ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT = false; // OBS. Current sense sampling will only work properly when driving forward
+        static constexpr bool ENABLE_VSENSE1_DEBUG_OPAMP_OUTPUT = true; // OBS. Current sense sampling will only work properly when driving forward
         static constexpr bool SAMPLE_IN_EVERY_PWM_CYCLE = false; // setting this to true effectively sets "_samplingInterval=1" and "_samplingInterval=1"
 
 		// Back-EMF hysteresis - difference should be larger than expected variance in Back-EMF due to rotation

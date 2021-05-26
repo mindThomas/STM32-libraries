@@ -21,7 +21,7 @@
 #ifdef STM32H7_USBCDC_USE_DEBUG
 #include <Debug/Debug.h>
 #else
-#define ERROR(msg) ((void)0U); // not implemented
+#define ERROR(msg) while(1) { __asm("bkpt #0"); }; // break on error and halt if debugging
 #endif
 
 #ifdef USE_FREERTOS_CMSIS

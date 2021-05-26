@@ -25,7 +25,7 @@
 #ifdef STM32H7_TIMER_USE_DEBUG
 #include <Debug/Debug.h>
 #else
-#define ERROR(msg) ((void)0U); // not implemented
+#define ERROR(msg) while(1) { __asm("bkpt #0"); }; // break on error and halt if debugging
 #endif
 
 Timer::hardware_resource_t* Timer::resTIMER6  = 0;

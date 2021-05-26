@@ -29,7 +29,7 @@
 #ifdef STM32G4_CANBUS_USE_DEBUG
 #include <Debug/Debug.h>
 #else
-#define ERROR(msg) ((void)0U); // not implemented
+#define ERROR(msg) while(1) { __asm("bkpt #0"); }; // break on error and halt if debugging
 #endif
 
 CANBus::hardware_resource_t* CANBus::resCAN = 0;

@@ -21,7 +21,8 @@
 #ifdef STM32H7_EEPROM_USE_DEBUG
 #include <Debug/Debug.h>
 #else
-#define ERROR(msg) ((void)0U); // not implemented
+#define ERROR(msg)                                                                                                     \
+    while (1) { __asm("bkpt #0"); }; // break on error and halt if debugging
 #endif
 
 EEPROM::EEPROM()
@@ -45,8 +46,8 @@ EEPROM::EEPROM()
     // uint16_t * sectionsEnum = (uint16_t *)&sections.internal;
     // EnableSection(sections.internal, sectionsEnum[1]-sectionsEnum[0]); // initialize EEPROM library section for reset
     // state detection - sectionsEnum[1] gives the address of the next element after the internal
-    EnableSection(sections.internal,
-                  sizeof(internal_state_t)); // initialize EEPROM library section for reset state detection
+    EnableSection(sections.internal, sizeof(internal_state_t)); // initialize EEPROM library section for reset
+                                                                // state detection
 }
 
 EEPROM::~EEPROM()
@@ -82,9 +83,7 @@ uint32_t EEPROM::CalculateSectionsTableChecksum(void)
     uint32_t  checksum     = 0;
     uint16_t* sectionsEnum = (uint16_t*)&sections;
     int       elements     = sizeof(sections) / sizeof(uint16_t);
-    for (int i = 0; i < elements; i++) {
-        checksum += sectionsEnum[i];
-    }
+    for (int i = 0; i < elements; i++) { checksum += sectionsEnum[i]; }
 
     return checksum;
 }
@@ -572,7 +571,7 @@ uint16_t EEPROM::Init(void)
                         /* Read the last variables' updates */
                         ReadStatus = ReadVariable(virtAddrTable_->at(VarIdx), &DataVar);
                         /* In case variable corresponding to the virtual address was found */
-                        if (ReadStatus != 0x1) {
+                        if (ReadStatus == EEPROM_FLASH_COMPLETE) {
                             /* Transfer the variable to the Page0 */
                             EepromStatus = VerifyPageFullWriteVariable(virtAddrTable_->at(VarIdx), DataVar);
                             /* If program operation was failed, a Flash error code is returned */
@@ -606,7 +605,7 @@ uint16_t EEPROM::Init(void)
             } else if (PageStatus1 == ERASED) /* Page0 receive, Page1 erased */
             {
                 pEraseInit.Sector       = PAGE1_ID;
-                pEraseInit.Banks        = FLASH_BANK_1;
+                pEraseInit.Banks        = FLASH_BANK_2;
                 pEraseInit.NbSectors    = 1;
                 pEraseInit.VoltageRange = VOLTAGE_RANGE;
                 /* Erase Page1 */
@@ -671,7 +670,7 @@ uint16_t EEPROM::Init(void)
                         /* Read the last variables' updates */
                         ReadStatus = ReadVariable(virtAddrTable_->at(VarIdx), &DataVar);
                         /* In case variable corresponding to the virtual address was found */
-                        if (ReadStatus != 0x1) {
+                        if (ReadStatus == EEPROM_FLASH_COMPLETE) {
                             /* Transfer the variable to the Page1 */
                             EepromStatus = VerifyPageFullWriteVariable(virtAddrTable_->at(VarIdx), DataVar);
                             /* If program operation was failed, a Flash error code is returned */

@@ -58,7 +58,7 @@
 #ifdef STM32H7_IO_USE_DEBUG
 #include <Debug/Debug.h>
 #else
-#define ERROR(msg) ((void)0U); // not implemented
+#define ERROR(msg) while(1) { __asm("bkpt #0"); }; // break on error and halt if debugging
 void Error_Handler()
 {
     while (1)
