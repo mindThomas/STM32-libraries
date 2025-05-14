@@ -30,4 +30,4 @@ set(STM32_HAL_L0_GIT_TAG v1.10.4) # stm32l0xx_hal_driver
 set(STM32_HAL_L4_GIT_TAG v1.13.0) # stm32l4xx_hal_driver
 set(STM32_HAL_L5_GIT_TAG v1.0.4) # stm32l5xx_hal_driver
 
-set(FREERTOS_GIT_TAG v10.2.1) # stm32_mw_freertos
+set(FREERTOS_GIT_TAG v10.2.1_20200117) # stm32_mw_freertos
