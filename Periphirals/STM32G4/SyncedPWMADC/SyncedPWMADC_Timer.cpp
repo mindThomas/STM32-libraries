@@ -297,24 +297,27 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
     uint32_t ARR = 0x10000;
     if (!fixed_prescaler) {
         timerSettingsNext.Prescaler = 0;
-        while (ARR > 0xFFFF) {
+        while (ARR > 0xFFFF && timerSettingsNext.Prescaler < 0xFFFF) {
             timerSettingsNext.Prescaler++;
             // Compute ARR and check value
             ARR = TimerClock / (timerSettingsNext.Frequency * timerSettingsNext.Prescaler) - 1;
         }
+        if (ARR > 0xFFFF || timerSettingsNext.Prescaler > 0xFFFF) {
+            return; // error, not possible with this prescaler
+        }
     } else {
         ARR = TimerClock / (timerSettingsNext.Frequency * timerSettingsNext.Prescaler) - 1;
-        if (ARR > 0xFFFF) {
+        if (ARR > 0xFFFF || timerSettingsNext.Prescaler > 0xFFFF) {
             return; // error, not possible with this prescaler
         }
     }
     hTimer.Init.Period    = ARR;
     hTimer.Init.Prescaler = timerSettingsNext.Prescaler - 1;
 
-    timerSettingsNext.TimerMax = ARR + 1;
+    timerSettingsNext.TimerMax = hTimer.Init.Period + 1;
 
     // Recompute actual frequency
-    timerSettingsNext.Frequency = TimerClock / ((hTimer.Init.Period + 1) * timerSettingsNext.Prescaler);
+    timerSettingsNext.Frequency = TimerClock / (timerSettingsNext.TimerMax * timerSettingsNext.Prescaler);
 
     if (!_TimerEnabled) {
         if (HAL_TIM_Base_Init(&hTimer) != HAL_OK) {
@@ -324,7 +327,7 @@ void SyncedPWMADC::Timer_Configure(uint32_t frequency, bool fixed_prescaler)
         // Duty cycle is defined as:
         // Duty Cycle = CCR / (ARR+1)
         // So 100% duty cycle is achieved by setting CCR=ARR+1
-        const uint16_t Duty_Count = (uint16_t)(roundf(fabsf(timerSettingsNext.DutyCycle) * (ARR + 1)));
+        const uint16_t Duty_Count = (uint16_t)(roundf(fabsf(timerSettingsNext.DutyCycle) * timerSettingsNext.TimerMax));
 
         if (timerSettingsNext.Direction) {
             // set one side of the motor to LOW all the time  (necessary to be able to measure current through Shunt1)

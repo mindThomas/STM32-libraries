@@ -311,7 +311,7 @@ class SyncedPWMADC
 		void SetDutyCycle_EndSampling(float dutyPct);
 		void SetDutyCycle_MiddleSamplingOnce(float dutyPct);
 		void SetCustomSamplingLocations(float samplingLocation1, float samplingLocation2 = 0.0f);
-		void SetDutyCycle_CustomSampling(float dutyPct, float samplingLocation1, float samplingLocation2);
+		void SetDutyCycle_CustomSampling(float dutyPct, float samplingLocation1, float samplingLocation2 = 0.0f);
 
 		void AssignEncoder(Encoder * encoder);
 		void DetermineCurrentSenseOffset();
@@ -323,6 +323,7 @@ class SyncedPWMADC
 
 		void WaitForNewSample();
 		void WaitForNewQueuedSample();
+        bool AnyTriggerEnabled();
 
 	private:
 		void RecomputePredefinedCounts(const bool compensateForSampleTime = true);

@@ -241,7 +241,7 @@ void SyncedPWMADC::RecomputePredefinedCounts(const bool compensateForSampleTime)
     // So 100% duty cycle is achieved by setting CCR=ARR+1
     // Note that CCR is the Capture Compare Register value, computed as
     // CCR = Duty * (ARR+1)
-    PredefinedCounts.End = hTimer.Init.Period + 1; // ARR+1
+    PredefinedCounts.End = timerSettingsNext.TimerMax; // ARR+1
 
     // Sample_DutyPct = ADC_SAMPLE_TIME_US*1e-6 / (1/PWM_frequency)
     float Sample_DutyPct    = (float)((uint32_t)(timerSettingsNext.Frequency) * ADC_SAMPLE_TIME_US) / 1000000.f;
@@ -1369,6 +1369,11 @@ void SyncedPWMADC::WaitForNewQueuedSample()
 #ifdef USE_FREERTOS
     xSemaphoreTake(_sampleAddedToQueue, (TickType_t)portMAX_DELAY);
 #endif
+}
+
+bool SyncedPWMADC::AnyTriggerEnabled()
+{
+    return timerSettingsNext.Triggers.numEnabledTriggers > 0;
 }
 
 SyncedPWMADC::SampleFloat SyncedPWMADC::GetCurrent()
